@@ -1,0 +1,17 @@
+name = "tweetfeed-mcp"
+main = "src/index.ts"
+compatibility_date = "2026-04-18"
+
+[[routes]]
+pattern = "mcp.tweetfeed.live/*"
+zone_name = "tweetfeed.live"
+
+[observability]
+enabled = true
+
+# Service binding: call the tweetfeed-api Worker directly (RPC) instead of
+# going through api.tweetfeed.live via CF edge, which fails with 522 on
+# same-zone Worker-to-Worker HTTP.
+[[services]]
+binding = "API"
+service = "tweetfeed-api"
