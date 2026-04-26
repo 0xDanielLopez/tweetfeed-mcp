@@ -256,6 +256,18 @@ export default {
 	async fetch(request: Request, env: Env): Promise<Response> {
 		const url = new URL(request.url);
 
+		if (request.method === "OPTIONS") {
+			return new Response(null, {
+				status: 204,
+				headers: {
+					"Access-Control-Allow-Origin": "*",
+					"Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+					"Access-Control-Allow-Headers": "Content-Type",
+					"Access-Control-Max-Age": "86400",
+				},
+			});
+		}
+
 		if (request.method === "GET") {
 			const body = {
 				service: "tweetfeed-mcp",
@@ -269,7 +281,10 @@ export default {
 				source: "https://github.com/0xDanielLopez/tweetfeed-mcp",
 			};
 			return Response.json(body, {
-				headers: { "Cache-Control": "public, max-age=300" },
+				headers: {
+					"Cache-Control": "public, max-age=300",
+					"Access-Control-Allow-Origin": "*",
+				},
 			});
 		}
 
