@@ -67,7 +67,7 @@ const TOOLS = [
 				tag: {
 					type: "string",
 					description:
-						"Optional: filter by tag, case-insensitive substring match. Examples: 'phishing', 'cobaltstrike', 'ransomware', 'APT', 'Lockbit'. ~119 tags exist — see https://tweetfeed.live/ for the live taxonomy.",
+						"Optional: filter by tag, case-insensitive substring match. Examples: 'phishing', 'cobaltstrike', 'ransomware', 'APT', 'Lockbit'. ~122 tags exist — see https://tweetfeed.live/ for the live taxonomy.",
 				},
 				type: {
 					type: "string",
@@ -83,11 +83,91 @@ const TOOLS = [
 			required: ["time"],
 		},
 	},
+	{
+		name: "check_url",
+		description:
+			"Check whether a URL (or substring) appears in the TweetFeed corpus over the past 30 days. Useful for confirming if an observed URL has been flagged by the public infosec Twitter/X community. Case-insensitive substring match against the 'value' field of type=url IOCs. Returns matching rows with date, researcher handle, value, tags, and source tweet URL.",
+		inputSchema: {
+			type: "object",
+			properties: {
+				url: {
+					type: "string",
+					description:
+						"URL or URL substring to search (e.g. 'fake-bank.com/login', 'phish-domain.tld'). Case-insensitive.",
+				},
+			},
+			required: ["url"],
+		},
+	},
+	{
+		name: "check_ip",
+		description:
+			"Check whether an IP address appears in the TweetFeed corpus over the past 30 days. Useful for confirming if an observed IP has been flagged as attacker infrastructure (C2, scanner, phishing host) by the public infosec Twitter/X community. Substring match against the 'value' field of type=ip IOCs (so '1.2.3' will also match '1.2.3.4'). Pass a full IPv4 / IPv6 string for an exact-match feel.",
+		inputSchema: {
+			type: "object",
+			properties: {
+				ip: {
+					type: "string",
+					description: "IPv4 or IPv6 address to search (e.g. '185.107.56.42', '2a02:...').",
+				},
+			},
+			required: ["ip"],
+		},
+	},
+	{
+		name: "check_hash",
+		description:
+			"Check whether a file hash (MD5 or SHA-256) appears in the TweetFeed corpus over the past 30 days. Useful for confirming if a binary sample has been shared by the public infosec Twitter/X community. Hash type auto-detected from length (32 hex = MD5, 64 hex = SHA-256). Exact match on hex value, case-insensitive.",
+		inputSchema: {
+			type: "object",
+			properties: {
+				hash: {
+					type: "string",
+					description:
+						"MD5 (32 hex chars) or SHA-256 (64 hex chars) hash. Case-insensitive. Non-hex characters or wrong length will return an INVALID_PARAMS error.",
+				},
+			},
+			required: ["hash"],
+		},
+	},
+	{
+		name: "list_recent_iocs",
+		description:
+			"List TweetFeed IOCs added since a given date, useful for delta-syncing a blocklist or threat-intel pipeline. Source is the 30-day month window so 'since' must be within the past 30 days; older queries return only the part within the month window. Optional 'type' and 'tag' filters narrow the result. Sorted newest first.",
+		inputSchema: {
+			type: "object",
+			properties: {
+				since: {
+					type: "string",
+					description: "ISO date (YYYY-MM-DD) for the lower bound. Example: '2026-04-15'.",
+				},
+				limit: {
+					type: "number",
+					description: "Max results (1-1000). Default 100.",
+					default: 100,
+				},
+				type: {
+					type: "string",
+					enum: ["url", "domain", "ip", "sha256", "md5"],
+					description: "Optional: filter by IOC type.",
+				},
+				tag: {
+					type: "string",
+					description: "Optional: filter by tag (case-insensitive substring match on the tag list).",
+				},
+			},
+			required: ["since"],
+		},
+	},
 ] as const;
 
 // ── Tool implementations ───────────────────────────────────────────────────
 async function callTool(env: Env, name: string, args: Record<string, unknown>) {
 	if (name === "query_iocs") return await toolQueryIocs(env, args);
+	if (name === "check_url") return await toolCheckUrl(env, args);
+	if (name === "check_ip") return await toolCheckIp(env, args);
+	if (name === "check_hash") return await toolCheckHash(env, args);
+	if (name === "list_recent_iocs") return await toolListRecent(env, args);
 	throw { code: ERR.METHOD_NOT_FOUND, message: `Unknown tool: ${name}` };
 }
 
@@ -174,6 +254,155 @@ function describeFilters(time: string, user: string, tag: string, type: string):
 	if (tag) parts.push(`tag=${tag}`);
 	if (type) parts.push(`type=${type}`);
 	return parts.join(", ");
+}
+
+// Fetch the past 30 days of IOCs of a given type via the API service binding.
+async function fetchMonthByType(env: Env, type: string): Promise<Array<Record<string, unknown>>> {
+	const url = `${API_BASE}/v1/month/${encodeURIComponent(type)}`;
+	const r = await env.API.fetch(new Request(url, { headers: { "User-Agent": UA } }));
+	if (!r.ok) {
+		throw { code: ERR.INTERNAL, message: `tweetfeed API returned HTTP ${r.status} for ${url}` };
+	}
+	return (await r.json()) as Array<Record<string, unknown>>;
+}
+
+async function toolCheckUrl(env: Env, args: Record<string, unknown>) {
+	const needle = String(args.url ?? "").trim().toLowerCase();
+	if (!needle) throw { code: ERR.INVALID_PARAMS, message: "'url' is required" };
+
+	const rows = await fetchMonthByType(env, "url");
+	const matches = rows.filter(
+		(row) => typeof row.value === "string" && row.value.toLowerCase().includes(needle),
+	);
+	if (matches.length === 0) {
+		return textContent(
+			`URL containing "${needle}" NOT found in the last 30 days of TweetFeed (${rows.length} URL IOCs scanned).`,
+		);
+	}
+	const preview = matches.slice(0, 50);
+	return textContent(
+		`Found ${matches.length} URL match(es) for "${needle}" in the last 30 days of TweetFeed${matches.length > preview.length ? ` (showing first ${preview.length})` : ""}:\n\n` +
+			JSON.stringify(preview, null, 2),
+	);
+}
+
+async function toolCheckIp(env: Env, args: Record<string, unknown>) {
+	const needle = String(args.ip ?? "").trim().toLowerCase();
+	if (!needle) throw { code: ERR.INVALID_PARAMS, message: "'ip' is required" };
+
+	const rows = await fetchMonthByType(env, "ip");
+	const matches = rows.filter(
+		(row) => typeof row.value === "string" && row.value.toLowerCase().includes(needle),
+	);
+	if (matches.length === 0) {
+		return textContent(
+			`IP "${needle}" NOT found in the last 30 days of TweetFeed (${rows.length} IP IOCs scanned).`,
+		);
+	}
+	const preview = matches.slice(0, 50);
+	return textContent(
+		`Found ${matches.length} IP match(es) for "${needle}" in the last 30 days of TweetFeed${matches.length > preview.length ? ` (showing first ${preview.length})` : ""}:\n\n` +
+			JSON.stringify(preview, null, 2),
+	);
+}
+
+async function toolCheckHash(env: Env, args: Record<string, unknown>) {
+	const raw = String(args.hash ?? "").trim().toLowerCase();
+	if (!raw) throw { code: ERR.INVALID_PARAMS, message: "'hash' is required" };
+	if (!/^[a-f0-9]+$/.test(raw)) {
+		throw { code: ERR.INVALID_PARAMS, message: "'hash' must be hex (a-f, 0-9 only)" };
+	}
+	let hashType: "md5" | "sha256";
+	if (raw.length === 32) hashType = "md5";
+	else if (raw.length === 64) hashType = "sha256";
+	else {
+		throw {
+			code: ERR.INVALID_PARAMS,
+			message: `'hash' must be 32 hex chars (MD5) or 64 hex chars (SHA-256); got length ${raw.length}`,
+		};
+	}
+
+	const rows = await fetchMonthByType(env, hashType);
+	const matches = rows.filter(
+		(row) => typeof row.value === "string" && row.value.toLowerCase() === raw,
+	);
+	if (matches.length === 0) {
+		return textContent(
+			`${hashType.toUpperCase()} hash "${raw}" NOT found in the last 30 days of TweetFeed (${rows.length} ${hashType.toUpperCase()} IOCs scanned).`,
+		);
+	}
+	return textContent(
+		`Found ${matches.length} match(es) for ${hashType.toUpperCase()} hash "${raw}" in the last 30 days of TweetFeed:\n\n` +
+			JSON.stringify(matches, null, 2),
+	);
+}
+
+async function toolListRecent(env: Env, args: Record<string, unknown>) {
+	const since = String(args.since ?? "").trim();
+	// Round-trip through Date so calendar-impossible dates ("2026-02-30") fail
+	// loud here instead of silently slipping through to the filter.
+	if (
+		!since ||
+		!/^\d{4}-\d{2}-\d{2}$/.test(since) ||
+		!Number.isFinite(new Date(since + "T00:00:00Z").getTime()) ||
+		new Date(since + "T00:00:00Z").toISOString().slice(0, 10) !== since
+	) {
+		throw { code: ERR.INVALID_PARAMS, message: "'since' must be a valid ISO date (YYYY-MM-DD)" };
+	}
+	const limit = clampInt(args.limit, 1, 1000, 100);
+	const typeArg = args.type ? String(args.type).trim().toLowerCase() : "";
+	if (typeArg && !VALID_TYPES.has(typeArg)) {
+		throw {
+			code: ERR.INVALID_PARAMS,
+			message: `'type' must be one of: url, domain, ip, sha256, md5 (got: '${typeArg}')`,
+		};
+	}
+	const tag = args.tag ? String(args.tag).trim() : "";
+
+	// Fetch the month window then filter client-side. Priority for which filter
+	// goes server-side mirrors query_iocs: type cheapest, then tag.
+	const apiFilters: string[] = [];
+	let clientFilterTag = "";
+	if (typeArg) apiFilters.push(typeArg);
+	if (tag) {
+		if (apiFilters.length < 2) apiFilters.push(tag);
+		else clientFilterTag = tag.toLowerCase();
+	}
+	const pathSuffix = apiFilters.length > 0 ? "/" + apiFilters.map(encodeURIComponent).join("/") : "";
+	const url = `${API_BASE}/v1/month${pathSuffix}`;
+	const r = await env.API.fetch(new Request(url, { headers: { "User-Agent": UA } }));
+	if (!r.ok) {
+		throw { code: ERR.INTERNAL, message: `tweetfeed API returned HTTP ${r.status} for ${url}` };
+	}
+	let rows = (await r.json()) as Array<Record<string, unknown>>;
+
+	if (clientFilterTag) {
+		rows = rows.filter((row) => {
+			const tags = row.tags;
+			if (Array.isArray(tags)) {
+				return tags.some((t) => typeof t === "string" && t.toLowerCase().includes(clientFilterTag));
+			}
+			return false;
+		});
+	}
+
+	// Filter by date >= since. Backend dates are "YYYY-MM-DD HH:MM:SS" UTC strings.
+	rows = rows.filter((row) => typeof row.date === "string" && row.date.slice(0, 10) >= since);
+	rows.sort((a, b) =>
+		String(b.date ?? "").localeCompare(String(a.date ?? "")),
+	);
+
+	const total = rows.length;
+	const out = rows.slice(0, limit);
+
+	const filterDesc = `since=${since}` + (typeArg ? `, type=${typeArg}` : "") + (tag ? `, tag=${tag}` : "");
+	if (total === 0) {
+		return textContent(`No IOCs in the past 30 days match ${filterDesc}.`);
+	}
+	return textContent(
+		`${total} IOC(s) match ${filterDesc}${total > limit ? ` (showing first ${limit})` : ""}:\n\n` +
+			JSON.stringify(out, null, 2),
+	);
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────

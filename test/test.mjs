@@ -62,11 +62,13 @@ await test("ping returns empty result", async () => {
 
 console.log("\n## Tool discovery");
 
-await test("tools/list includes query_iocs", async () => {
+await test("tools/list includes all 5 tools", async () => {
 	const r = await rpc("tools/list", {});
 	assert(r.body.result?.tools, "no tools");
 	const names = r.body.result.tools.map((t) => t.name);
-	assert(names.includes("query_iocs"), `missing query_iocs: ${names}`);
+	for (const expected of ["query_iocs", "check_url", "check_ip", "check_hash", "list_recent_iocs"]) {
+		assert(names.includes(expected), `missing ${expected}: ${names}`);
+	}
 });
 
 await test("each tool has inputSchema + description", async () => {
@@ -112,6 +114,131 @@ await test("query_iocs rejects invalid type", async () => {
 		arguments: { time: "today", type: "dwarf" },
 	});
 	assert(r.body.error, `expected error, got: ${JSON.stringify(r.body)}`);
+});
+
+console.log("\n## check_url");
+
+await test("check_url with common substring returns matches", async () => {
+	const r = await rpc("tools/call", {
+		name: "check_url",
+		arguments: { url: ".com" },
+	});
+	assert(r.body.result?.content, `no content: ${JSON.stringify(r.body)}`);
+	const text = r.body.result.content[0]?.text ?? "";
+	// ".com" is so common that "Found N URL match(es)" should appear.
+	assert(text.includes("Found"), `expected matches, got: ${text.substring(0, 200)}`);
+});
+
+await test("check_url with unlikely substring returns NOT found", async () => {
+	const r = await rpc("tools/call", {
+		name: "check_url",
+		arguments: { url: "definitely-not-a-real-string-xyz-9999" },
+	});
+	const text = r.body.result.content[0]?.text ?? "";
+	assert(text.includes("NOT found"), `expected NOT found: ${text}`);
+});
+
+await test("check_url rejects empty string", async () => {
+	const r = await rpc("tools/call", {
+		name: "check_url",
+		arguments: { url: "" },
+	});
+	assert(r.body.error?.code === -32602, `expected INVALID_PARAMS, got: ${JSON.stringify(r.body)}`);
+});
+
+console.log("\n## check_ip");
+
+await test("check_ip with substring '.' returns matches", async () => {
+	const r = await rpc("tools/call", {
+		name: "check_ip",
+		arguments: { ip: "." },
+	});
+	assert(r.body.result?.content, `no content: ${JSON.stringify(r.body)}`);
+	const text = r.body.result.content[0]?.text ?? "";
+	// "." matches every IPv4; should always have results in a healthy month.
+	assert(text.includes("Found"), `expected matches, got: ${text.substring(0, 200)}`);
+});
+
+await test("check_ip rejects empty string", async () => {
+	const r = await rpc("tools/call", {
+		name: "check_ip",
+		arguments: { ip: "" },
+	});
+	assert(r.body.error?.code === -32602, `expected INVALID_PARAMS`);
+});
+
+console.log("\n## check_hash");
+
+await test("check_hash valid md5 length runs (likely NOT found)", async () => {
+	const r = await rpc("tools/call", {
+		name: "check_hash",
+		arguments: { hash: "d41d8cd98f00b204e9800998ecf8427e" }, // empty-string MD5
+	});
+	assert(r.body.result?.content, `no content: ${JSON.stringify(r.body)}`);
+	// Empty-string MD5 is too generic, almost certainly NOT in the wild feed.
+});
+
+await test("check_hash valid sha256 length runs", async () => {
+	const r = await rpc("tools/call", {
+		name: "check_hash",
+		arguments: { hash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" },
+	});
+	assert(r.body.result?.content, `no content: ${JSON.stringify(r.body)}`);
+});
+
+await test("check_hash rejects non-hex chars", async () => {
+	const r = await rpc("tools/call", {
+		name: "check_hash",
+		arguments: { hash: "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz" },
+	});
+	assert(r.body.error?.code === -32602, `expected INVALID_PARAMS`);
+});
+
+await test("check_hash rejects wrong-length hex", async () => {
+	const r = await rpc("tools/call", {
+		name: "check_hash",
+		arguments: { hash: "abcdef0123456789" }, // 16 hex, neither MD5 nor SHA-256
+	});
+	assert(r.body.error?.code === -32602, `expected INVALID_PARAMS`);
+});
+
+console.log("\n## list_recent_iocs");
+
+await test("list_recent_iocs with recent since returns IOCs", async () => {
+	const since = new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+	const r = await rpc("tools/call", {
+		name: "list_recent_iocs",
+		arguments: { since, limit: 5 },
+	});
+	assert(r.body.result?.content, `no content: ${JSON.stringify(r.body)}`);
+	const text = r.body.result.content[0]?.text ?? "";
+	// Healthy feed: 3 days back should always have IOCs.
+	assert(text.includes("match"), `expected matches, got: ${text.substring(0, 200)}`);
+});
+
+await test("list_recent_iocs rejects malformed date", async () => {
+	const r = await rpc("tools/call", {
+		name: "list_recent_iocs",
+		arguments: { since: "not-a-date" },
+	});
+	assert(r.body.error?.code === -32602, `expected INVALID_PARAMS`);
+});
+
+await test("list_recent_iocs rejects calendar-impossible date", async () => {
+	const r = await rpc("tools/call", {
+		name: "list_recent_iocs",
+		arguments: { since: "2026-02-30" },
+	});
+	assert(r.body.error?.code === -32602, `expected INVALID_PARAMS`);
+});
+
+await test("list_recent_iocs accepts type filter", async () => {
+	const since = new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+	const r = await rpc("tools/call", {
+		name: "list_recent_iocs",
+		arguments: { since, type: "url", limit: 3 },
+	});
+	assert(r.body.result?.content, `no content: ${JSON.stringify(r.body)}`);
 });
 
 console.log("\n## Error handling");
