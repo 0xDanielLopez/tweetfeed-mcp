@@ -1,8 +1,8 @@
-// tweetfeed MCP server — wraps the public TweetFeed API as MCP tools.
+// tweetfeed MCP server - wraps the public TweetFeed API as MCP tools.
 //
 // Protocol: Model Context Protocol over HTTP (JSON-RPC 2.0, single-shot).
 // Spec: https://spec.modelcontextprotocol.io/specification/2025-03-26/
-// Deploy: wrangler deploy — routes mcp.tweetfeed.live/*
+// Deploy: wrangler deploy - routes mcp.tweetfeed.live/*
 //
 // Read-only. No auth. IOC data is CC0 per tweetfeed.live TOS.
 
@@ -67,7 +67,7 @@ const TOOLS = [
 				tag: {
 					type: "string",
 					description:
-						"Optional: filter by tag, case-insensitive substring match. Examples: 'phishing', 'cobaltstrike', 'ransomware', 'APT', 'Lockbit'. ~122 tags exist — see https://tweetfeed.live/ for the live taxonomy.",
+						"Optional: filter by tag, case-insensitive substring match. Examples: 'phishing', 'cobaltstrike', 'ransomware', 'APT', 'Lockbit'. ~122 tags exist - see https://tweetfeed.live/ for the live taxonomy.",
 				},
 				type: {
 					type: "string",
