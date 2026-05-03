@@ -133,7 +133,7 @@ const TOOLS = [
 	{
 		name: "list_recent_iocs",
 		description:
-			"List TweetFeed IOCs added since a given date, useful for delta-syncing a blocklist or threat-intel pipeline. Source is the 30-day month window so 'since' must be within the past 30 days; older queries return only the part within the month window. Optional 'type' and 'tag' filters narrow the result. Sorted newest first.",
+			"List TweetFeed IOCs added since a given date, useful for delta-syncing a blocklist or Threat Intelligence pipeline. Source is the 30-day month window so 'since' must be within the past 30 days; older queries return only the part within the month window. Optional 'type' and 'tag' filters narrow the result. Sorted newest first.",
 		inputSchema: {
 			type: "object",
 			properties: {
