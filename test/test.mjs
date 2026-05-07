@@ -62,11 +62,20 @@ await test("ping returns empty result", async () => {
 
 console.log("\n## Tool discovery");
 
-await test("tools/list includes all 5 tools", async () => {
+await test("tools/list includes all 8 tools", async () => {
 	const r = await rpc("tools/list", {});
 	assert(r.body.result?.tools, "no tools");
 	const names = r.body.result.tools.map((t) => t.name);
-	for (const expected of ["query_iocs", "check_url", "check_ip", "check_hash", "list_recent_iocs"]) {
+	for (const expected of [
+		"query_iocs",
+		"check_url",
+		"check_ip",
+		"check_hash",
+		"list_recent_iocs",
+		"get_tag_info",
+		"get_trending",
+		"enrich_ioc",
+	]) {
 		assert(names.includes(expected), `missing ${expected}: ${names}`);
 	}
 });
@@ -239,6 +248,91 @@ await test("list_recent_iocs accepts type filter", async () => {
 		arguments: { since, type: "url", limit: 3 },
 	});
 	assert(r.body.result?.content, `no content: ${JSON.stringify(r.body)}`);
+});
+
+console.log("\n## get_tag_info");
+
+await test("get_tag_info for 'phishing' returns counts + recent IOCs", async () => {
+	const r = await rpc("tools/call", {
+		name: "get_tag_info",
+		arguments: { tag: "phishing", limit: 3 },
+	});
+	assert(r.body.result?.content, `no content: ${JSON.stringify(r.body)}`);
+	const data = JSON.parse(r.body.result.content[0].text);
+	assert(data.tag === "phishing", `wrong tag: ${data.tag}`);
+	assert(typeof data.counts === "object", "missing counts");
+	assert(Array.isArray(data.recent_iocs), "missing recent_iocs");
+	// Phishing is the highest-volume tag; counts.month should always be > 0.
+	assert(data.counts.month > 0, `expected phishing month count > 0, got ${data.counts.month}`);
+});
+
+await test("get_tag_info handles tag with leading '#'", async () => {
+	const r = await rpc("tools/call", {
+		name: "get_tag_info",
+		arguments: { tag: "#phishing", limit: 1 },
+	});
+	assert(r.body.result?.content, `no content: ${JSON.stringify(r.body)}`);
+	const data = JSON.parse(r.body.result.content[0].text);
+	assert(data.counts?.month > 0, "expected month count > 0 with leading '#'");
+});
+
+await test("get_tag_info missing 'tag' returns INVALID_PARAMS", async () => {
+	const r = await rpc("tools/call", { name: "get_tag_info", arguments: {} });
+	assert(r.body.error?.code === -32602, `expected -32602, got ${r.body.error?.code}`);
+});
+
+console.log("\n## get_trending");
+
+await test("get_trending(today) returns top_tags + types", async () => {
+	const r = await rpc("tools/call", {
+		name: "get_trending",
+		arguments: { window: "today", limit: 5 },
+	});
+	assert(r.body.result?.content, `no content: ${JSON.stringify(r.body)}`);
+	const data = JSON.parse(r.body.result.content[0].text);
+	assert(data.window === "today", `wrong window: ${data.window}`);
+	assert(Array.isArray(data.top_tags), "missing top_tags");
+	assert(Array.isArray(data.types), "missing types");
+	assert(data.top_tags.length <= 5, `top_tags should respect limit (got ${data.top_tags.length})`);
+});
+
+await test("get_trending rejects invalid window", async () => {
+	const r = await rpc("tools/call", {
+		name: "get_trending",
+		arguments: { window: "decade" },
+	});
+	assert(r.body.error?.code === -32602, `expected -32602, got ${r.body.error?.code}`);
+});
+
+console.log("\n## enrich_ioc");
+
+await test("enrich_ioc auto-detects md5 hash", async () => {
+	// Use a definitely-not-in-feed hash to test the not-found branch + auto-detect.
+	const r = await rpc("tools/call", {
+		name: "enrich_ioc",
+		arguments: { value: "0123456789abcdef0123456789abcdef" }, // 32 hex = MD5
+	});
+	assert(r.body.result?.content, `no content: ${JSON.stringify(r.body)}`);
+	const text = r.body.result.content[0].text;
+	assert(text.includes("md5"), `expected md5 detection: ${text.slice(0, 200)}`);
+});
+
+await test("enrich_ioc auto-detects ipv4", async () => {
+	const r = await rpc("tools/call", {
+		name: "enrich_ioc",
+		arguments: { value: "1.2.3.4" },
+	});
+	assert(r.body.result?.content, `no content: ${JSON.stringify(r.body)}`);
+	const text = r.body.result.content[0].text;
+	assert(text.includes("ip"), `expected ip detection: ${text.slice(0, 200)}`);
+});
+
+await test("enrich_ioc rejects undetectable input", async () => {
+	const r = await rpc("tools/call", {
+		name: "enrich_ioc",
+		arguments: { value: "this is just a sentence with spaces" },
+	});
+	assert(r.body.error?.code === -32602, `expected -32602, got ${r.body.error?.code}`);
 });
 
 console.log("\n## Error handling");
