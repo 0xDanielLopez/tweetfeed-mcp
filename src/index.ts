@@ -1,7 +1,7 @@
 // tweetfeed MCP server - wraps the public TweetFeed API as MCP tools.
 //
 // Protocol: Model Context Protocol over HTTP (JSON-RPC 2.0, single-shot).
-// Spec: https://spec.modelcontextprotocol.io/specification/2025-03-26/
+// Spec: https://spec.modelcontextprotocol.io/specification/2025-11-25/
 // Deploy: wrangler deploy - routes mcp.tweetfeed.live/*
 //
 // Read-only. No auth. IOC data is CC0 per tweetfeed.live TOS.
@@ -15,7 +15,24 @@ const UA = "tweetfeed-mcp/0.1";
 interface Env {
 	API: Fetcher;
 }
-const PROTOCOL_VERSION = "2025-03-26";
+// MCP protocol revisions this server speaks, newest first. Mirrors
+// @modelcontextprotocol/sdk SUPPORTED_PROTOCOL_VERSIONS (SDK 1.29.0).
+const LATEST_PROTOCOL_VERSION = "2025-11-25";
+const SUPPORTED_PROTOCOL_VERSIONS = [
+	"2025-11-25",
+	"2025-06-18",
+	"2025-03-26",
+	"2024-11-05",
+	"2024-10-07",
+];
+// Spec-compliant negotiation: echo the client's requested protocolVersion when
+// we support it; otherwise advertise our latest. Pre-2026-06-07 this server
+// hardcoded 2025-03-26 and ignored the client's request entirely.
+function negotiateProtocol(requested: unknown): string {
+	return typeof requested === "string" && SUPPORTED_PROTOCOL_VERSIONS.includes(requested)
+		? requested
+		: LATEST_PROTOCOL_VERSION;
+}
 const SERVER_INFO = { name: "tweetfeed-mcp", version: "0.1.0" };
 
 const VALID_TIMES = new Set(["today", "week", "month"]);
@@ -665,7 +682,7 @@ async function handleRpc(env: Env, req: RpcRequest): Promise<RpcResponse> {
 				jsonrpc: "2.0",
 				id,
 				result: {
-					protocolVersion: PROTOCOL_VERSION,
+					protocolVersion: negotiateProtocol((req.params ?? {}).protocolVersion),
 					capabilities: { tools: {} },
 					serverInfo: SERVER_INFO,
 					instructions:
@@ -740,7 +757,7 @@ export default {
 			const body = {
 				service: "tweetfeed-mcp",
 				protocol: "Model Context Protocol (MCP)",
-				protocolVersion: PROTOCOL_VERSION,
+				protocolVersion: LATEST_PROTOCOL_VERSION,
 				transport: "HTTP JSON-RPC 2.0 (POST)",
 				endpoint: `${url.origin}/`,
 				tools: TOOLS.map((t) => ({ name: t.name, description: t.description })),
