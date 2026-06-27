@@ -268,7 +268,10 @@ async function toolQueryIocs(env: Env, args: Record<string, unknown>) {
 	const limit = clampInt(args.limit, 1, 1000, 100);
 
 	const userRaw = args.user ? String(args.user).trim() : "";
-	const tag = args.tag ? String(args.tag).trim() : "";
+	// Strip a leading '#' so tag:"#phishing" works like tag:"phishing" (the
+	// api-worker matches '#'-stripped row tags; get_tag_info/get_trending also
+	// normalise this). Without it, "#phishing" silently returned 0 results.
+	const tag = args.tag ? String(args.tag).trim().replace(/^#/, "") : "";
 	const typeArg = args.type ? String(args.type).trim().toLowerCase() : "";
 
 	if (typeArg && !VALID_TYPES.has(typeArg)) {
@@ -443,7 +446,10 @@ async function toolListRecent(env: Env, args: Record<string, unknown>) {
 			message: `'type' must be one of: url, domain, ip, sha256, md5 (got: '${typeArg}')`,
 		};
 	}
-	const tag = args.tag ? String(args.tag).trim() : "";
+	// Strip a leading '#' so tag:"#phishing" works like tag:"phishing" (the
+	// api-worker matches '#'-stripped row tags; get_tag_info/get_trending also
+	// normalise this). Without it, "#phishing" silently returned 0 results.
+	const tag = args.tag ? String(args.tag).trim().replace(/^#/, "") : "";
 
 	// Fetch the month window then filter client-side. Priority for which filter
 	// goes server-side mirrors query_iocs: type cheapest, then tag.
