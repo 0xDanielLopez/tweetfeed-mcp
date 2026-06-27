@@ -3,7 +3,10 @@
 // Usage: MCP_URL=https://mcp.tweetfeed.live node test/test.mjs
 //        (or MCP_URL=http://localhost:8787 for local dev)
 
-const URL_ENDPOINT = process.env.MCP_URL || "http://localhost:8787";
+// Default to the deployed prod MCP so a bare `npm test` never silently tests a
+// stray local dev server (e.g. an unrelated `wrangler dev` on :8787). Set
+// MCP_URL=http://localhost:8787 explicitly for local dev.
+const URL_ENDPOINT = process.env.MCP_URL || "https://mcp.tweetfeed.live";
 
 let passed = 0;
 let failed = 0;
