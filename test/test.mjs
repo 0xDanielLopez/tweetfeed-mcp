@@ -272,11 +272,16 @@ await test("get_tag_info for 'phishing' returns counts + recent IOCs", async () 
 await test("get_tag_info handles tag with leading '#'", async () => {
 	const r = await rpc("tools/call", {
 		name: "get_tag_info",
-		arguments: { tag: "#phishing", limit: 1 },
+		arguments: { tag: "#phishing", limit: 3 },
 	});
 	assert(r.body.result?.content, `no content: ${JSON.stringify(r.body)}`);
 	const data = JSON.parse(r.body.result.content[0].text);
 	assert(data.counts?.month > 0, "expected month count > 0 with leading '#'");
+	// Regression: the '#' must be normalised before the /v1/month fetch, else
+	// the API tag-matcher (which strips '#' from rows) returns 0 and both
+	// total_in_month and recent_iocs come back empty for a '#'-prefixed tag.
+	assert(data.total_in_month > 0, "expected total_in_month > 0 with leading '#'");
+	assert(data.recent_iocs.length > 0, "expected recent_iocs non-empty with leading '#'");
 });
 
 await test("get_tag_info missing 'tag' returns INVALID_PARAMS", async () => {

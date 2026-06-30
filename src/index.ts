@@ -527,14 +527,14 @@ async function toolGetTagInfo(env: Env, args: Record<string, unknown>) {
 	const [counts, iocsRes] = await Promise.all([
 		fetchCountsJson(),
 		env.API.fetch(
-			new Request(`${API_BASE}/v1/month/${encodeURIComponent(raw)}`, {
+			new Request(`${API_BASE}/v1/month/${encodeURIComponent(tagNorm)}`, {
 				headers: { "User-Agent": UA },
 			}),
 		),
 	]);
 
 	if (!iocsRes.ok) {
-		throw { code: ERR.INTERNAL, message: `tweetfeed API returned HTTP ${iocsRes.status} for /v1/month/${raw}` };
+		throw { code: ERR.INTERNAL, message: `tweetfeed API returned HTTP ${iocsRes.status} for /v1/month/${tagNorm}` };
 	}
 	const iocs = (await iocsRes.json()) as Array<Record<string, unknown>>;
 
