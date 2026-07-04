@@ -781,7 +781,14 @@ export default {
 		}
 
 		if (request.method !== "POST") {
-			return new Response("Method Not Allowed", { status: 405, headers: { Allow: "GET, POST" } });
+			return new Response("Method Not Allowed", {
+				status: 405,
+				headers: {
+					Allow: "GET, POST",
+					"Access-Control-Allow-Origin": "*",
+					"X-Content-Type-Options": "nosniff",
+				},
+			});
 		}
 
 		let req: RpcRequest | RpcRequest[];
@@ -790,13 +797,26 @@ export default {
 		} catch {
 			return Response.json(
 				{ jsonrpc: "2.0", id: null, error: { code: ERR.PARSE, message: "Parse error" } },
-				{ status: 400 },
+				{
+					status: 400,
+					headers: {
+						"Access-Control-Allow-Origin": "*",
+						"X-Content-Type-Options": "nosniff",
+					},
+				},
 			);
 		}
 
 		if (Array.isArray(req)) {
 			const out = await Promise.all(req.map((r) => handleRpc(env, r)));
-			return Response.json(out);
+			return Response.json(out, {
+				headers: {
+					"Access-Control-Allow-Origin": "*",
+					"Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+					"Access-Control-Allow-Headers": "Content-Type",
+					"X-Content-Type-Options": "nosniff",
+				},
+			});
 		}
 
 		const response = await handleRpc(env, req);
