@@ -23,6 +23,7 @@ intel programmatically.
 | `get_tag_info` | Window aggregates plus recent IOCs for a tag (leading `#` optional). |
 | `get_trending` | Top tags and IOC-type distribution for a window (today/week/month/year). |
 | `enrich_ioc` | Auto-detect an IOC's type (url/domain/ip/md5/sha256) and look it up over the past 30 days. |
+| `get_campaigns` | AI-clustered campaign groupings from the last 7 days, with optional brand and min-confidence filters. |
 
 ## Use with Claude Desktop / Claude.ai / other MCP clients
 

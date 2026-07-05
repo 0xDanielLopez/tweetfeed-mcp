@@ -65,7 +65,7 @@ await test("ping returns empty result", async () => {
 
 console.log("\n## Tool discovery");
 
-await test("tools/list includes all 8 tools", async () => {
+await test("tools/list includes all 9 tools", async () => {
 	const r = await rpc("tools/list", {});
 	assert(r.body.result?.tools, "no tools");
 	const names = r.body.result.tools.map((t) => t.name);
@@ -78,6 +78,7 @@ await test("tools/list includes all 8 tools", async () => {
 		"get_tag_info",
 		"get_trending",
 		"enrich_ioc",
+		"get_campaigns",
 	]) {
 		assert(names.includes(expected), `missing ${expected}: ${names}`);
 	}
@@ -341,6 +342,33 @@ await test("enrich_ioc rejects undetectable input", async () => {
 		arguments: { value: "this is just a sentence with spaces" },
 	});
 	assert(r.body.error?.code === -32602, `expected -32602, got ${r.body.error?.code}`);
+});
+
+console.log("\n## get_campaigns");
+
+await test("get_campaigns runs (tolerant of upstream /v1/campaigns not deployed yet)", async () => {
+	const r = await rpc("tools/call", {
+		name: "get_campaigns",
+		arguments: { limit: 5 },
+	});
+	// /v1/campaigns is being added in parallel and may not be live yet, in which
+	// case the MCP surfaces the upstream non-200 as an INTERNAL error. Both a
+	// normal tool response and that specific error are valid pre-cutover states.
+	assert(r.body.result?.content || r.body.error, `expected result or error: ${JSON.stringify(r.body)}`);
+	if (r.body.result?.content) {
+		const text = r.body.result.content[0]?.text ?? "";
+		assert(text.length > 10, `unexpectedly short response: ${text}`);
+	} else {
+		assert(r.body.error.code === -32603, `expected INTERNAL error code, got: ${r.body.error.code}`);
+	}
+});
+
+await test("get_campaigns rejects invalid min_confidence", async () => {
+	const r = await rpc("tools/call", {
+		name: "get_campaigns",
+		arguments: { min_confidence: "extreme" },
+	});
+	assert(r.body.error?.code === -32602, `expected INVALID_PARAMS, got: ${JSON.stringify(r.body)}`);
 });
 
 console.log("\n## Error handling");
