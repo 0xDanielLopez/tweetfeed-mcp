@@ -231,7 +231,7 @@ const TOOLS = [
 	{
 		name: "enrich_ioc",
 		description:
-			"Look up an IOC value across the past 30 days of TweetFeed with auto-detected type (URL / domain / IP / MD5 / SHA-256). Returns all matching rows including researcher attribution and tags. Saves the agent from having to pick the right check_X tool when the type is uncertain. Falls back to substring search for URLs.",
+			"Look up an IOC value in TweetFeed. First an EXACT lookup over the past 365 days (aggregated: first_seen, last_seen, count, reporters, tags, last source tweets; accepts defanged input and http/https variants). If no exact match, falls back to a 30-day substring scan with auto-detected type (URL / domain / IP / MD5 / SHA-256).",
 		inputSchema: {
 			type: "object",
 			properties: {
@@ -659,6 +659,25 @@ function detectIocType(raw: string): "md5" | "sha256" | "ip" | "domain" | "url" 
 async function toolEnrichIoc(env: Env, args: Record<string, unknown>) {
 	const raw = String(args.value ?? "").trim();
 	if (!raw) throw { code: ERR.INVALID_PARAMS, message: "'value' is required" };
+
+	// Exact 365-day lookup first (sharded index; fast, aggregated).
+	const lookupUrl = `${API_BASE}/v1/ioc?value=${encodeURIComponent(raw)}`;
+	const lr = await env.API.fetch(new Request(lookupUrl, { headers: { "User-Agent": UA } }));
+	if (lr.ok) {
+		const data = (await lr.json()) as {
+			found?: boolean;
+			query?: string;
+			records?: unknown[];
+		};
+		if (data.found && Array.isArray(data.records) && data.records.length > 0) {
+			return textContent(
+				`Exact match in the past 365 days of TweetFeed (query normalized to "${data.query}"):\n\n` +
+					JSON.stringify(data.records, null, 2),
+			);
+		}
+	}
+
+	// No exact match: fall back to the 30-day substring scan.
 	const type = detectIocType(raw);
 	if (!type) {
 		throw {
@@ -685,13 +704,13 @@ async function toolEnrichIoc(env: Env, args: Record<string, unknown>) {
 
 	if (matches.length === 0) {
 		return textContent(
-			`Type: ${type} (auto-detected). NOT found in the last 30 days of TweetFeed (${rows.length} ${type} IOCs scanned).`,
+			`Type: ${type} (auto-detected). No EXACT match in the past 365 days and NOT found by substring in the last 30 days of TweetFeed (${rows.length} ${type} IOCs scanned).`,
 		);
 	}
 
 	const preview = matches.slice(0, 50);
 	return textContent(
-		`Type: ${type} (auto-detected). Found ${matches.length} match(es) for "${raw}" in the last 30 days${matches.length > preview.length ? ` (showing first ${preview.length})` : ""}:\n\n` +
+		`Type: ${type} (auto-detected). No exact 365-day match; found ${matches.length} substring match(es) for "${raw}" in the last 30 days${matches.length > preview.length ? ` (showing first ${preview.length})` : ""}:\n\n` +
 			JSON.stringify(preview, null, 2),
 	);
 }
@@ -817,7 +836,7 @@ async function handleRpc(env: Env, req: RpcRequest): Promise<RpcResponse> {
 					capabilities: { tools: {} },
 					serverInfo: SERVER_INFO,
 					instructions:
-						"Query the tweetfeed.live public IOC feed (URLs, domains, IPs, SHA256/MD5 hashes from the infosec Twitter/X community). Data is CC0, read-only, updated every 15 min. Use query_iocs with a required 'time' window (today|week|month) and optional 'user'/'tag'/'type' filters. get_campaigns returns AI-clustered campaign groupings of the trailing 7 days, regenerated daily.",
+						"Query the tweetfeed.live public IOC feed (URLs, domains, IPs, SHA256/MD5 hashes from the infosec Twitter/X community). Data is CC0, read-only, updated every 15 min. Use query_iocs with a required 'time' window (today|week|month) and optional 'user'/'tag'/'type' filters. get_campaigns returns AI-clustered campaign groupings of the trailing 7 days, regenerated daily. enrich_ioc does an exact 365-day lookup (aggregated record) with a 30-day substring fallback.",
 				},
 			};
 		}
