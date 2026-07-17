@@ -231,7 +231,7 @@ const TOOLS = [
 	{
 		name: "enrich_ioc",
 		description:
-			"Look up an IOC value in TweetFeed. First an EXACT lookup over the past 365 days (aggregated: first_seen, last_seen, count, reporters, tags, last source tweets; accepts defanged input and http/https variants). If no exact match, falls back to a 30-day substring scan with auto-detected type (URL / domain / IP / MD5 / SHA-256).",
+			"Look up an IOC value in TweetFeed. First an EXACT lookup over the past 365 days (aggregated: first_seen, last_seen, count, reporters, tags, last source tweets; accepts defanged input and http/https variants), including AI-generated context (summary, malware family, threat type) when available. If no exact match, falls back to a 30-day substring scan with auto-detected type (URL / domain / IP / MD5 / SHA-256).",
 		inputSchema: {
 			type: "object",
 			properties: {
@@ -668,11 +668,19 @@ async function toolEnrichIoc(env: Env, args: Record<string, unknown>) {
 			found?: boolean;
 			query?: string;
 			records?: unknown[];
+			ai?: Record<string, unknown>;
 		};
 		if (data.found && Array.isArray(data.records) && data.records.length > 0) {
+			// Optional AI context merged upstream by /v1/ioc from the 6h
+			// enrichment sidecar (summary/family/threat_type/suggested_tags).
+			const aiBlock =
+				data.ai && typeof data.ai === "object"
+					? `\n\nAI context (from TweetFeed's 6h enrichment job):\n${JSON.stringify(data.ai, null, 2)}`
+					: "";
 			return textContent(
 				`Exact match in the past 365 days of TweetFeed (query normalized to "${data.query}"):\n\n` +
-					JSON.stringify(data.records, null, 2),
+					JSON.stringify(data.records, null, 2) +
+					aiBlock,
 			);
 		}
 	}
