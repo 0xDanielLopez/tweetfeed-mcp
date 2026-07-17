@@ -1,6 +1,6 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.0xdaniellopez/tweetfeed",
+  "name": "io.github.0xDanielLopez/tweetfeed",
   "title": "TweetFeed",
   "description": "IOCs (URLs, domains, IPs, hashes) shared by the infosec community on X/Twitter. No auth, CC0.",
   "repository": {
