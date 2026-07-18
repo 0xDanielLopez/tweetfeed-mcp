@@ -689,6 +689,7 @@ async function toolEnrichIoc(env: Env, args: Record<string, unknown>) {
 			records?: unknown[];
 			ai?: Record<string, unknown>;
 			external?: unknown[];
+			net?: Record<string, unknown>;
 		};
 		if (data.found && Array.isArray(data.records) && data.records.length > 0) {
 			// Optional AI context merged upstream by /v1/ioc from the 6h
@@ -703,9 +704,16 @@ async function toolEnrichIoc(env: Env, args: Record<string, unknown>) {
 				Array.isArray(data.external) && data.external.length > 0
 					? `\n\nAlso listed in public abuse.ch feeds (corroboration, not part of the canonical feed):\n${JSON.stringify(data.external, null, 2)}`
 					: "";
+			// Optional IP network metadata merged upstream by /v1/ioc from the
+			// 6h ipmeta.json sidecar (ipinfo.io org/country/city).
+			const netBlock =
+				data.net && typeof data.net === "object" && !Array.isArray(data.net)
+					? `\n\nIP network metadata (ipinfo.io, third-party sidecar):\n${JSON.stringify(data.net, null, 2)}`
+					: "";
 			return textContent(
 				`Exact match in the past 365 days of TweetFeed (query normalized to "${data.query}"):\n\n` +
 					JSON.stringify(data.records, null, 2) +
+					netBlock +
 					externalBlock +
 					aiBlock,
 			);
