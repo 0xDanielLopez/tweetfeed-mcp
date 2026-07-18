@@ -688,6 +688,7 @@ async function toolEnrichIoc(env: Env, args: Record<string, unknown>) {
 			query?: string;
 			records?: unknown[];
 			ai?: Record<string, unknown>;
+			external?: unknown[];
 		};
 		if (data.found && Array.isArray(data.records) && data.records.length > 0) {
 			// Optional AI context merged upstream by /v1/ioc from the 6h
@@ -696,9 +697,16 @@ async function toolEnrichIoc(env: Env, args: Record<string, unknown>) {
 				data.ai && typeof data.ai === "object"
 					? `\n\nAI context (from TweetFeed's 6h enrichment job):\n${JSON.stringify(data.ai, null, 2)}`
 					: "";
+			// Optional cross-feed corroboration merged upstream by /v1/ioc
+			// from the 6h external.json sidecar (URLhaus/ThreatFox matches).
+			const externalBlock =
+				Array.isArray(data.external) && data.external.length > 0
+					? `\n\nAlso listed in public abuse.ch feeds (corroboration, not part of the canonical feed):\n${JSON.stringify(data.external, null, 2)}`
+					: "";
 			return textContent(
 				`Exact match in the past 365 days of TweetFeed (query normalized to "${data.query}"):\n\n` +
 					JSON.stringify(data.records, null, 2) +
+					externalBlock +
 					aiBlock,
 			);
 		}
