@@ -38,6 +38,7 @@ const SERVER_INFO = { name: "tweetfeed-mcp", version: "0.1.0" };
 const VALID_TIMES = new Set(["today", "week", "month"]);
 const VALID_TYPES = new Set(["url", "domain", "ip", "sha256", "md5"]);
 const VALID_TRENDING_WINDOWS = new Set(["today", "week", "month", "year"]);
+const VALID_TREND_SECTIONS = new Set(["daily", "movers", "tlds", "novelty", "all"]);
 // Ordering for min_confidence filtering in get_campaigns: low < medium < high.
 const CONFIDENCE_RANK: Record<string, number> = { low: 0, medium: 1, high: 2 };
 
@@ -270,6 +271,23 @@ const TOOLS = [
 			},
 		},
 	},
+	{
+		name: "get_trends",
+		description:
+			"IOC trend analytics from the last 31 days: daily volume by type, top moving tags week-over-week, most-abused TLDs, and new vs recurring indicator ratio.",
+		inputSchema: {
+			type: "object",
+			properties: {
+				section: {
+					type: "string",
+					enum: ["daily", "movers", "tlds", "novelty", "all"],
+					description:
+						"Optional: which section to return. 'daily' = 31-day volume summary by type, 'movers' = top tags moving week-over-week (current 7d vs previous 7d), 'tlds' = most-abused TLDs among domain IOCs, 'novelty' = new vs recurring indicator ratio, 'all' = every section. Default 'all'.",
+					default: "all",
+				},
+			},
+		},
+	},
 ] as const;
 
 // ── Tool implementations ───────────────────────────────────────────────────
@@ -283,6 +301,7 @@ async function callTool(env: Env, name: string, args: Record<string, unknown>) {
 	if (name === "get_trending") return await toolGetTrending(args);
 	if (name === "enrich_ioc") return await toolEnrichIoc(env, args);
 	if (name === "get_campaigns") return await toolGetCampaigns(env, args);
+	if (name === "get_trends") return await toolGetTrends(env, args);
 	throw { code: ERR.METHOD_NOT_FOUND, message: `Unknown tool: ${name}` };
 }
 
@@ -817,6 +836,142 @@ async function toolGetCampaigns(env: Env, args: Record<string, unknown>) {
 			2,
 		),
 	);
+}
+
+// Shape of GET /v1/trends. Fields are optional in the type because we only
+// ever read them defensively - an upstream schema tweak should degrade to
+// "no data available" per-section rather than throw.
+interface TrendsDoc {
+	version?: number;
+	generated_at?: string;
+	daily?: {
+		days?: number;
+		dates?: string[];
+		total?: number[];
+		types?: Record<string, number[]>;
+	};
+	movers?: {
+		// api-worker emits [start, end] tuples, not pre-formatted strings.
+		current_range?: [string, string] | string;
+		previous_range?: [string, string] | string;
+		tags?: Array<{ tag: string; count: number; previous: number; delta: number; pct: number | null }>;
+	};
+	tlds?: {
+		window?: string;
+		domains_total?: number;
+		top?: Array<{ tld: string; count: number }>;
+		other?: number;
+	};
+	novelty?: {
+		window?: string;
+		distinct_values?: number;
+		new?: number;
+		recurring?: number;
+		pct_new?: number;
+	};
+}
+
+function formatRange(range: [string, string] | string | undefined): string {
+	if (!range) return "n/a";
+	return Array.isArray(range) ? `${range[0]} to ${range[1]}` : range;
+}
+
+function renderTrendsDaily(daily: TrendsDoc["daily"]): string {
+	if (!daily || !Array.isArray(daily.dates) || !Array.isArray(daily.total) || daily.total.length === 0) {
+		return "## Daily volume\nNo daily data available.";
+	}
+	const days = daily.days ?? daily.dates.length;
+	const totalSum = daily.total.reduce((a, b) => a + (Number(b) || 0), 0);
+	let peakIdx = 0;
+	for (let i = 1; i < daily.total.length; i++) {
+		if ((Number(daily.total[i]) || 0) > (Number(daily.total[peakIdx]) || 0)) peakIdx = i;
+	}
+	const peakDate = daily.dates[peakIdx] ?? "?";
+	const peakCount = daily.total[peakIdx] ?? 0;
+	const avg = totalSum / daily.total.length;
+	const firstDate = daily.dates[0] ?? "?";
+	const lastDate = daily.dates[daily.dates.length - 1] ?? "?";
+
+	const typeTotals = Object.entries(daily.types ?? {})
+		.map(([type, arr]) => ({
+			type,
+			sum: Array.isArray(arr) ? arr.reduce((a, b) => a + (Number(b) || 0), 0) : 0,
+		}))
+		.sort((a, b) => b.sum - a.sum);
+	const typeLine = typeTotals.length > 0 ? typeTotals.map((t) => `${t.type} ${t.sum}`).join(", ") : "n/a";
+
+	return (
+		`## Daily volume (last ${days}d, ${firstDate} to ${lastDate})\n` +
+		`Total: ${totalSum} IOCs | Avg/day: ${avg.toFixed(1)} | Peak: ${peakDate} (${peakCount})\n` +
+		`By type (${days}d total): ${typeLine}`
+	);
+}
+
+function renderTrendsMovers(movers: TrendsDoc["movers"]): string {
+	if (!movers || !Array.isArray(movers.tags) || movers.tags.length === 0) {
+		return "## Top movers (week over week)\nNo mover data available.";
+	}
+	const header = `## Top movers: ${formatRange(movers.current_range)} vs ${formatRange(movers.previous_range)}`;
+	const colHeader = `  ${"tag".padEnd(20)}${"count".padStart(8)}${"prev".padStart(8)}${"delta".padStart(9)}${"pct".padStart(10)}`;
+	const rows = movers.tags.map((m) => {
+		const delta = Number(m.delta) || 0;
+		const deltaStr = delta > 0 ? `+${delta}` : `${delta}`;
+		const pctStr =
+			m.pct === null || m.pct === undefined ? "new" : `${m.pct > 0 ? "+" : ""}${m.pct.toFixed(1)}%`;
+		return `  ${String(m.tag).padEnd(20)}${String(m.count).padStart(8)}${String(m.previous).padStart(8)}${deltaStr.padStart(9)}${pctStr.padStart(10)}`;
+	});
+	return [header, colHeader, ...rows].join("\n");
+}
+
+function renderTrendsTlds(tlds: TrendsDoc["tlds"]): string {
+	if (!tlds || !Array.isArray(tlds.top) || tlds.top.length === 0) {
+		return "## Top TLDs\nNo TLD data available.";
+	}
+	const total = tlds.domains_total ?? 0;
+	const pct = (n: number) => (total > 0 ? `${((n / total) * 100).toFixed(1)}%` : "n/a");
+	const header = `## Top abused TLDs (window: ${tlds.window ?? "n/a"}, ${total} domains total)`;
+	const rows = tlds.top.map((t) => `  .${String(t.tld).replace(/^\./, "")}`.padEnd(14) + `${String(t.count).padStart(6)}  (${pct(t.count)})`);
+	if (typeof tlds.other === "number" && tlds.other > 0) {
+		rows.push(`  other`.padEnd(14) + `${String(tlds.other).padStart(6)}  (${pct(tlds.other)})`);
+	}
+	return [header, ...rows].join("\n");
+}
+
+function renderTrendsNovelty(novelty: TrendsDoc["novelty"]): string {
+	if (!novelty || typeof novelty.distinct_values !== "number") {
+		return "## Novelty\nNo novelty data available.";
+	}
+	const pctNew = typeof novelty.pct_new === "number" ? `${novelty.pct_new.toFixed(1)}%` : "n/a";
+	return (
+		`## Novelty (window: ${novelty.window ?? "n/a"})\n` +
+		`Distinct values: ${novelty.distinct_values} | New: ${novelty.new ?? 0} (${pctNew}) | Recurring: ${novelty.recurring ?? 0}`
+	);
+}
+
+async function toolGetTrends(env: Env, args: Record<string, unknown>) {
+	const section = args.section ? String(args.section).trim().toLowerCase() : "all";
+	if (!VALID_TREND_SECTIONS.has(section)) {
+		throw {
+			code: ERR.INVALID_PARAMS,
+			message: `'section' must be one of: daily, movers, tlds, novelty, all (got: '${section}')`,
+		};
+	}
+
+	const url = `${API_BASE}/v1/trends`;
+	const r = await env.API.fetch(new Request(url, { headers: { "User-Agent": UA } }));
+	if (!r.ok) {
+		throw { code: ERR.INTERNAL, message: `tweetfeed API returned HTTP ${r.status} for ${url}` };
+	}
+	const doc = (await r.json()) as TrendsDoc;
+
+	const blocks: string[] = [];
+	if (section === "daily" || section === "all") blocks.push(renderTrendsDaily(doc.daily));
+	if (section === "movers" || section === "all") blocks.push(renderTrendsMovers(doc.movers));
+	if (section === "tlds" || section === "all") blocks.push(renderTrendsTlds(doc.tlds));
+	if (section === "novelty" || section === "all") blocks.push(renderTrendsNovelty(doc.novelty));
+
+	const header = `TweetFeed IOC trends (generated_at: ${doc.generated_at ?? "unknown"})\n`;
+	return textContent(header + "\n" + blocks.join("\n\n"));
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────

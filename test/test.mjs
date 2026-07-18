@@ -65,7 +65,7 @@ await test("ping returns empty result", async () => {
 
 console.log("\n## Tool discovery");
 
-await test("tools/list includes all 9 tools", async () => {
+await test("tools/list includes all 10 tools", async () => {
 	const r = await rpc("tools/list", {});
 	assert(r.body.result?.tools, "no tools");
 	const names = r.body.result.tools.map((t) => t.name);
@@ -79,6 +79,7 @@ await test("tools/list includes all 9 tools", async () => {
 		"get_trending",
 		"enrich_ioc",
 		"get_campaigns",
+		"get_trends",
 	]) {
 		assert(names.includes(expected), `missing ${expected}: ${names}`);
 	}
@@ -367,6 +368,70 @@ await test("get_campaigns rejects invalid min_confidence", async () => {
 	const r = await rpc("tools/call", {
 		name: "get_campaigns",
 		arguments: { min_confidence: "extreme" },
+	});
+	assert(r.body.error?.code === -32602, `expected INVALID_PARAMS, got: ${JSON.stringify(r.body)}`);
+});
+
+console.log("\n## get_trends");
+
+await test("get_trends with no arguments (default 'all') returns every section", async () => {
+	const r = await rpc("tools/call", { name: "get_trends", arguments: {} });
+	assert(r.body.result?.content, `no content: ${JSON.stringify(r.body)}`);
+	const text = r.body.result.content[0]?.text ?? "";
+	assert(text.includes("Daily volume"), `missing daily section: ${text.slice(0, 200)}`);
+	assert(text.includes("Top movers"), `missing movers section: ${text.slice(0, 200)}`);
+	assert(text.includes("Top abused TLDs"), `missing tlds section: ${text.slice(0, 200)}`);
+	assert(text.includes("Novelty"), `missing novelty section: ${text.slice(0, 200)}`);
+});
+
+await test("get_trends section=daily returns only the daily block", async () => {
+	const r = await rpc("tools/call", {
+		name: "get_trends",
+		arguments: { section: "daily" },
+	});
+	assert(r.body.result?.content, `no content: ${JSON.stringify(r.body)}`);
+	const text = r.body.result.content[0]?.text ?? "";
+	assert(text.includes("Daily volume"), `missing daily section: ${text.slice(0, 200)}`);
+	assert(!text.includes("Top movers"), `unexpected movers section: ${text.slice(0, 200)}`);
+});
+
+await test("get_trends section=movers returns only the movers block", async () => {
+	const r = await rpc("tools/call", {
+		name: "get_trends",
+		arguments: { section: "movers" },
+	});
+	assert(r.body.result?.content, `no content: ${JSON.stringify(r.body)}`);
+	const text = r.body.result.content[0]?.text ?? "";
+	assert(text.includes("Top movers"), `missing movers section: ${text.slice(0, 200)}`);
+	assert(!text.includes("Daily volume"), `unexpected daily section: ${text.slice(0, 200)}`);
+});
+
+await test("get_trends section=tlds returns only the tlds block", async () => {
+	const r = await rpc("tools/call", {
+		name: "get_trends",
+		arguments: { section: "tlds" },
+	});
+	assert(r.body.result?.content, `no content: ${JSON.stringify(r.body)}`);
+	const text = r.body.result.content[0]?.text ?? "";
+	assert(text.includes("Top abused TLDs"), `missing tlds section: ${text.slice(0, 200)}`);
+	assert(!text.includes("Novelty"), `unexpected novelty section: ${text.slice(0, 200)}`);
+});
+
+await test("get_trends section=novelty returns only the novelty block", async () => {
+	const r = await rpc("tools/call", {
+		name: "get_trends",
+		arguments: { section: "novelty" },
+	});
+	assert(r.body.result?.content, `no content: ${JSON.stringify(r.body)}`);
+	const text = r.body.result.content[0]?.text ?? "";
+	assert(text.includes("Novelty"), `missing novelty section: ${text.slice(0, 200)}`);
+	assert(!text.includes("Top abused TLDs"), `unexpected tlds section: ${text.slice(0, 200)}`);
+});
+
+await test("get_trends rejects invalid section", async () => {
+	const r = await rpc("tools/call", {
+		name: "get_trends",
+		arguments: { section: "decade" },
 	});
 	assert(r.body.error?.code === -32602, `expected INVALID_PARAMS, got: ${JSON.stringify(r.body)}`);
 });

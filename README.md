@@ -24,6 +24,7 @@ intel programmatically.
 | `get_trending` | Top tags and IOC-type distribution for a window (today/week/month/year). |
 | `enrich_ioc` | Auto-detect an IOC's type (url/domain/ip/md5/sha256) and look it up over the past 30 days. |
 | `get_campaigns` | AI-clustered campaign groupings from the last 7 days, with optional brand and min-confidence filters. |
+| `get_trends` | 31-day IOC trend analytics: daily volume by type, top moving tags week-over-week, most-abused TLDs, new vs recurring ratio. |
 
 ## Use with Claude Desktop / Claude.ai / other MCP clients
 
