@@ -38,7 +38,7 @@ const SERVER_INFO = { name: "tweetfeed-mcp", version: "0.1.0" };
 const VALID_TIMES = new Set(["today", "week", "month"]);
 const VALID_TYPES = new Set(["url", "domain", "ip", "sha256", "md5"]);
 const VALID_TRENDING_WINDOWS = new Set(["today", "week", "month", "year"]);
-const VALID_TREND_SECTIONS = new Set(["daily", "movers", "tlds", "novelty", "all"]);
+const VALID_TREND_SECTIONS = new Set(["daily", "movers", "tlds", "novelty", "producers", "all"]);
 // Ordering for min_confidence filtering in get_campaigns: low < medium < high.
 const CONFIDENCE_RANK: Record<string, number> = { low: 0, medium: 1, high: 2 };
 
@@ -274,15 +274,15 @@ const TOOLS = [
 	{
 		name: "get_trends",
 		description:
-			"IOC trend analytics from the last 31 days: daily volume by type, top moving tags week-over-week, most-abused TLDs, and new vs recurring indicator ratio.",
+			"IOC trend analytics from the last 31 days: daily volume by type, top moving tags week-over-week, most-abused TLDs, new vs recurring indicator ratio, and feed producer concentration.",
 		inputSchema: {
 			type: "object",
 			properties: {
 				section: {
 					type: "string",
-					enum: ["daily", "movers", "tlds", "novelty", "all"],
+					enum: ["daily", "movers", "tlds", "novelty", "producers", "all"],
 					description:
-						"Optional: which section to return. 'daily' = 31-day volume summary by type, 'movers' = top tags moving week-over-week (current 7d vs previous 7d), 'tlds' = most-abused TLDs among domain IOCs, 'novelty' = new vs recurring indicator ratio, 'all' = every section. Default 'all'.",
+						"Optional: which section to return. 'daily' = 31-day volume summary by type, 'movers' = top tags moving week-over-week (current 7d vs previous 7d), 'tlds' = most-abused TLDs among domain IOCs, 'novelty' = new vs recurring indicator ratio, 'producers' = feed producer concentration: top contributors, active producers and bus factor for 7d/30d windows, 'all' = every section. Default 'all'.",
 					default: "all",
 				},
 			},
@@ -885,7 +885,20 @@ interface TrendsDoc {
 		recurring?: number;
 		pct_new?: number;
 	};
+	producers?: {
+		window_7d?: ProducerWindow;
+		window_30d?: ProducerWindow;
+	};
 }
+
+// Shared shape for get_trends "producers" section windows (7d/30d).
+type ProducerWindow = {
+	total?: number;
+	active_producers?: number;
+	top?: Array<{ user: string; count: number; share: number }>;
+	top2_share?: number;
+	bus_factor_50?: number;
+};
 
 function formatRange(range: [string, string] | string | undefined): string {
 	if (!range) return "n/a";
@@ -964,12 +977,37 @@ function renderTrendsNovelty(novelty: TrendsDoc["novelty"]): string {
 	);
 }
 
+function renderTrendsProducers(p: TrendsDoc["producers"]): string {
+	if (!p) return "Producer stats not available yet.";
+
+	const summaryLine = (label: string, w?: ProducerWindow): string => {
+		if (!w) return `${label}: no data available.`;
+		const total = w.total ?? 0;
+		const active = w.active_producers ?? 0;
+		const top2Share = typeof w.top2_share === "number" ? `${(w.top2_share * 100).toFixed(1)}%` : "n/a";
+		const busFactor = w.bus_factor_50 ?? "n/a";
+		return `${label}: ${total} IOCs | Active producers: ${active} | Top-2 share: ${top2Share} | Bus factor (50%): ${busFactor}`;
+	};
+
+	const lines = ["## Producer concentration", summaryLine("7d", p.window_7d), summaryLine("30d", p.window_30d)];
+
+	if (p.window_7d && Array.isArray(p.window_7d.top) && p.window_7d.top.length > 0) {
+		lines.push("", "Top producers (7d):");
+		p.window_7d.top.slice(0, 10).forEach((t, i) => {
+			const share = typeof t.share === "number" ? `${(t.share * 100).toFixed(1)}%` : "n/a";
+			lines.push(`  ${i + 1}. @${t.user} - ${t.count} IOCs (${share})`);
+		});
+	}
+
+	return lines.join("\n");
+}
+
 async function toolGetTrends(env: Env, args: Record<string, unknown>) {
 	const section = args.section ? String(args.section).trim().toLowerCase() : "all";
 	if (!VALID_TREND_SECTIONS.has(section)) {
 		throw {
 			code: ERR.INVALID_PARAMS,
-			message: `'section' must be one of: daily, movers, tlds, novelty, all (got: '${section}')`,
+			message: `'section' must be one of: daily, movers, tlds, novelty, producers, all (got: '${section}')`,
 		};
 	}
 
@@ -985,6 +1023,7 @@ async function toolGetTrends(env: Env, args: Record<string, unknown>) {
 	if (section === "movers" || section === "all") blocks.push(renderTrendsMovers(doc.movers));
 	if (section === "tlds" || section === "all") blocks.push(renderTrendsTlds(doc.tlds));
 	if (section === "novelty" || section === "all") blocks.push(renderTrendsNovelty(doc.novelty));
+	if (section === "producers" || section === "all") blocks.push(renderTrendsProducers(doc.producers));
 
 	const header = `TweetFeed IOC trends (generated_at: ${doc.generated_at ?? "unknown"})\n`;
 	return textContent(header + "\n" + blocks.join("\n\n"));
