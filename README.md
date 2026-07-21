@@ -22,9 +22,9 @@ intel programmatically.
 | `list_recent_iocs` | List IOCs added since a given date, with optional type/tag filters. |
 | `get_tag_info` | Window aggregates plus recent IOCs for a tag (leading `#` optional). |
 | `get_trending` | Top tags and IOC-type distribution for a window (today/week/month/year). |
-| `enrich_ioc` | Auto-detect an IOC's type (url/domain/ip/md5/sha256) and look it up over the past 30 days. |
+| `enrich_ioc` | Exact lookup of an IOC (auto-detected type: url/domain/ip/md5/sha256) over the past 365 days, with AI/external-corroboration/net context when available; falls back to a 30-day substring scan on a miss. |
 | `get_campaigns` | AI-clustered campaign groupings from the last 7 days, with optional brand and min-confidence filters. |
-| `get_trends` | 31-day IOC trend analytics: daily volume by type, top moving tags week-over-week, most-abused TLDs, new vs recurring ratio. |
+| `get_trends` | 31-day IOC trend analytics: daily volume by type, top moving tags week-over-week, most-abused TLDs, new vs recurring ratio, producer concentration. |
 
 ## Use with Claude Desktop / Claude.ai / other MCP clients
 
