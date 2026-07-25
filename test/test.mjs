@@ -170,7 +170,13 @@ await test("check_ip with substring '.' returns matches", async () => {
 	assert(r.body.result?.content, `no content: ${JSON.stringify(r.body)}`);
 	const text = r.body.result.content[0]?.text ?? "";
 	// "." matches every IPv4; should always have results in a healthy month.
-	assert(text.includes("Found"), `expected matches, got: ${text.substring(0, 200)}`);
+	// Match the cardinal, not a bare "found": the same response also carries
+	// "NOT found (exact match, past 365 days)" and the zero-match branch emits
+	// "NOT found by substring", so a substring check would pass on 0 matches.
+	assert(
+		/found \d+ substring match\(es\)/.test(text),
+		`expected matches, got: ${text.substring(0, 200)}`,
+	);
 });
 
 await test("check_ip rejects empty string", async () => {
