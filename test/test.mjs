@@ -261,6 +261,64 @@ await test("list_recent_iocs accepts type filter", async () => {
 	assert(r.body.result?.content, `no content: ${JSON.stringify(r.body)}`);
 });
 
+console.log("\n## Result-cap honesty (x-result-truncated)");
+
+await test("query_iocs time=month surfaces the real window when the API truncates", async () => {
+	// Ground truth: hit the same unfiltered /v1/month route the tool uses and
+	// read api-worker's own honesty headers directly, instead of hardcoding an
+	// assumption about today's corpus size. The month feed currently runs
+	// ~15k rows/30d against a 10k cap (see CLAUDE.md), so this is expected to
+	// be truncated most of the time, but the test adapts either way.
+	const apiRes = await fetch("https://api.tweetfeed.live/v1/month");
+	const truncated = apiRes.headers.get("x-result-truncated") === "true";
+	const windowStart = apiRes.headers.get("x-result-window-start");
+
+	const r = await rpc("tools/call", {
+		name: "query_iocs",
+		arguments: { time: "month", limit: 2 },
+	});
+	assert(r.body.result?.content, `no content: ${JSON.stringify(r.body)}`);
+	const text = r.body.result.content[0]?.text ?? "";
+	// The leading count must stay parseable and unmodified - the caveat is an
+	// addition, never a replacement.
+	assert(/^\d+ IOC\(s\) matched time=month/.test(text), `count must stay at the front: ${text.slice(0, 80)}`);
+
+	if (!truncated) {
+		// Corpus has shrunk below the cap - must NOT falsely claim truncation.
+		assert(!text.includes("CAVEAT"), `unexpected caveat when not truncated: ${text.slice(0, 300)}`);
+		return;
+	}
+	assert(text.includes("CAVEAT"), `expected truncation caveat, got: ${text.slice(0, 300)}`);
+	assert(text.includes("10,000-row cap"), `expected cap mention: ${text.slice(0, 300)}`);
+	assert(windowStart && text.includes(windowStart), `expected real window-start (${windowStart}) named: ${text.slice(0, 400)}`);
+	assert(text.includes("feeds/month.csv"), `expected CSV escape hatch: ${text.slice(0, 400)}`);
+	assert(text.includes("type="), `expected type= filter escape hatch: ${text.slice(0, 400)}`);
+});
+
+await test("list_recent_iocs warns explicitly when 'since' predates the real window start", async () => {
+	// Ground truth again, then pick a 'since' one day before the real window
+	// start - guaranteed to predate it regardless of whether that start is
+	// pushed forward by cap truncation or is just the natural 30-day boundary.
+	const apiRes = await fetch("https://api.tweetfeed.live/v1/month");
+	const windowStart = apiRes.headers.get("x-result-window-start");
+	assert(windowStart, "ground-truth request missing x-result-window-start");
+	const windowStartDate = windowStart.slice(0, 10);
+	const since = new Date(new Date(windowStartDate + "T00:00:00Z").getTime() - 24 * 3600 * 1000)
+		.toISOString()
+		.slice(0, 10);
+
+	const r = await rpc("tools/call", {
+		name: "list_recent_iocs",
+		arguments: { since, limit: 2 },
+	});
+	assert(r.body.result?.content, `no content: ${JSON.stringify(r.body)}`);
+	const text = r.body.result.content[0]?.text ?? "";
+	assert(/^\d+ IOC\(s\) match since=/.test(text), `count must stay at the front: ${text.slice(0, 80)}`);
+	assert(text.includes("does NOT cover"), `expected explicit non-coverage warning: ${text.slice(0, 400)}`);
+	assert(text.includes(since), `expected requested since echoed back: ${text.slice(0, 400)}`);
+	assert(text.includes(windowStart), `expected real window-start named: ${text.slice(0, 400)}`);
+});
+
 console.log("\n## get_tag_info");
 
 await test("get_tag_info for 'phishing' returns counts + recent IOCs", async () => {

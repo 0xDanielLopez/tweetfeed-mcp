@@ -355,6 +355,12 @@ async function toolQueryIocs(env: Env, args: Record<string, unknown>) {
 	if (!r.ok) {
 		throw { code: ERR.INTERNAL, message: `tweetfeed API returned HTTP ${r.status} for ${url}` };
 	}
+	// api-worker's honesty headers: whether this response actually hit the
+	// 10,000-row cap, and if so, the real date range it ended up serving. See
+	// truncationCaveat().
+	const truncated = r.headers.get("x-result-truncated") === "true";
+	const windowStart = r.headers.get("x-result-window-start");
+	const windowEnd = r.headers.get("x-result-window-end");
 	let rows = (await r.json()) as Array<Record<string, unknown>>;
 
 	if (clientFilterUser) {
@@ -374,14 +380,15 @@ async function toolQueryIocs(env: Env, args: Record<string, unknown>) {
 
 	const total = rows.length;
 	const out = rows.slice(0, limit);
+	const caveat = truncated ? truncationCaveat(time, !!typeArg, windowStart, windowEnd) : "";
 
 	if (total === 0) {
 		const filterDesc = describeFilters(time, userRaw, tag, typeArg);
-		return textContent(`No IOCs found for ${filterDesc}.`);
+		return textContent(`No IOCs found for ${filterDesc}.${caveat}`);
 	}
 
 	return textContent(
-		`${total} IOC(s) matched ${describeFilters(time, userRaw, tag, typeArg)}${total > limit ? ` (showing first ${limit})` : ""}:\n\n` +
+		`${total} IOC(s) matched ${describeFilters(time, userRaw, tag, typeArg)}${total > limit ? ` (showing first ${limit})` : ""}:${caveat}\n\n` +
 			JSON.stringify(out, null, 2),
 	);
 }
@@ -392,6 +399,43 @@ function describeFilters(time: string, user: string, tag: string, type: string):
 	if (tag) parts.push(`tag=${tag}`);
 	if (type) parts.push(`type=${type}`);
 	return parts.join(", ");
+}
+
+// Appended to query_iocs/list_recent_iocs output when the underlying API
+// response hit the 10,000-row cap (x-result-truncated: true - currently only
+// reachable via the unfiltered /v1/month route, see llms.txt "Result cap").
+// Truncation drops the OLDEST rows first, so this states the real date range
+// actually served instead of letting the caller assume the full requested
+// window came back, and points at the two uncapped escape hatches: a type=
+// filter (per-type /v1/{time}/{type} routes have no cap) or the raw CSV feed.
+function truncationCaveat(
+	time: string,
+	hasTypeFilter: boolean,
+	windowStart: string | null,
+	windowEnd: string | null,
+): string {
+	const range = windowStart && windowEnd ? `${windowStart} to ${windowEnd} (UTC)` : "less than the requested window";
+	const typeHint = hasTypeFilter ? "" : "Filter by type= (those per-type routes have no cap), or ";
+	return (
+		`\n\nCAVEAT: this hit the API's 10,000-row cap and was truncated from the oldest end - ` +
+		`the rows above only actually cover ${range}, not the full ${time} window requested. ` +
+		`${typeHint}download the complete window uncapped at https://tweetfeed.live/feeds/${time}.csv.`
+	);
+}
+
+// list_recent_iocs-specific: it always sources from the /v1/month window, so
+// if the caller's 'since' predates where that window actually starts - either
+// because of cap truncation (see truncationCaveat above) or just the natural
+// 30-day boundary - rows before window-start are silently absent even though
+// the response text says "match since=<since>". Say so explicitly instead of
+// implying coverage back to a date the response never reached.
+function sinceNotCoveredCaveat(since: string, windowStart: string | null): string {
+	if (!windowStart || since >= windowStart.slice(0, 10)) return "";
+	return (
+		`\n\nCAVEAT: this does NOT cover since=${since} as requested - the underlying window only ` +
+		`actually starts at ${windowStart} (UTC), so any IOCs between ${since} and then are missing here. ` +
+		`For older history see https://tweetfeed.live/feeds/year.csv (365-day CSV, no cap).`
+	);
 }
 
 // Fetch the past 30 days of IOCs of a given type via the API service binding.
@@ -565,6 +609,11 @@ async function toolListRecent(env: Env, args: Record<string, unknown>) {
 	if (!r.ok) {
 		throw { code: ERR.INTERNAL, message: `tweetfeed API returned HTTP ${r.status} for ${url}` };
 	}
+	// Same honesty headers as query_iocs - see truncationCaveat() and
+	// sinceNotCoveredCaveat() below.
+	const truncated = r.headers.get("x-result-truncated") === "true";
+	const windowStart = r.headers.get("x-result-window-start");
+	const windowEnd = r.headers.get("x-result-window-end");
 	let rows = (await r.json()) as Array<Record<string, unknown>>;
 
 	if (clientFilterTag) {
@@ -585,13 +634,19 @@ async function toolListRecent(env: Env, args: Record<string, unknown>) {
 
 	const total = rows.length;
 	const out = rows.slice(0, limit);
+	// Order matters only for readability: lead with the cap-truncation caveat
+	// (broader - explains WHY the window shrank) then the since-specific one
+	// (narrower - says whether the shrunk window still covers what was asked).
+	const caveat =
+		(truncated ? truncationCaveat("month", !!typeArg, windowStart, windowEnd) : "") +
+		sinceNotCoveredCaveat(since, windowStart);
 
 	const filterDesc = `since=${since}` + (typeArg ? `, type=${typeArg}` : "") + (tag ? `, tag=${tag}` : "");
 	if (total === 0) {
-		return textContent(`No IOCs in the past 30 days match ${filterDesc}.`);
+		return textContent(`No IOCs in the past 30 days match ${filterDesc}.${caveat}`);
 	}
 	return textContent(
-		`${total} IOC(s) match ${filterDesc}${total > limit ? ` (showing first ${limit})` : ""}:\n\n` +
+		`${total} IOC(s) match ${filterDesc}${total > limit ? ` (showing first ${limit})` : ""}:${caveat}\n\n` +
 			JSON.stringify(out, null, 2),
 	);
 }
