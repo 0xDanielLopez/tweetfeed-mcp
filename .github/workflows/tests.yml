@@ -1,0 +1,38 @@
+name: tests
+
+# Senal temprana, NO el gate de deploy (wrangler deploy sigue siendo manual -
+# ver ~/code/CLAUDE.md). Este repo no tiene una suite de unit tests separada
+# (ver package.json: un unico script "test" -> test/test.mjs), asi que el
+# type-check es el unico chequeo puramente local; test/test.mjs es un smoke
+# test end-to-end contra el MCP server desplegado en vivo (default
+# MCP_URL=https://mcp.tweetfeed.live) - read-only JSON-RPC sobre HTTP, sin
+# efectos secundarios en prod.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: test
+        run: npm test
