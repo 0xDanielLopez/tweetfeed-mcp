@@ -16,7 +16,7 @@ interface Env {
 	API: Fetcher;
 }
 // MCP protocol revisions this server speaks, newest first. Mirrors
-// @modelcontextprotocol/sdk SUPPORTED_PROTOCOL_VERSIONS (SDK 1.29.0).
+// @modelcontextprotocol/sdk SUPPORTED_PROTOCOL_VERSIONS (SDK 1.30.0).
 const LATEST_PROTOCOL_VERSION = "2025-11-25";
 const SUPPORTED_PROTOCOL_VERSIONS = [
 	"2025-11-25",
