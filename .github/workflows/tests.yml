@@ -2,11 +2,15 @@ name: tests
 
 # Senal temprana, NO el gate de deploy (wrangler deploy sigue siendo manual -
 # ver ~/code/CLAUDE.md). Este repo no tiene una suite de unit tests separada
-# (ver package.json: un unico script "test" -> test/test.mjs), asi que el
-# type-check es el unico chequeo puramente local; test/test.mjs es un smoke
-# test end-to-end contra el MCP server desplegado en vivo (default
-# MCP_URL=https://mcp.tweetfeed.live) - read-only JSON-RPC sobre HTTP, sin
-# efectos secundarios en prod.
+# de la que tirar aqui: el unico script "test" en package.json (test/test.mjs)
+# hace fetch() en vivo contra el MCP server desplegado (default
+# MCP_URL=https://mcp.tweetfeed.live) y contra api.tweetfeed.live para
+# ground-truth - mismo patron que test/compare.mjs y test/since.mjs en el
+# repo hermano api-worker, excluidos alli por la misma razon: por diseno no
+# son deterministas (dependen del estado real de prod, no del diff del PR) y
+# no son aptos para bloquear un push/PR. Se corre a mano con `npm test`
+# (post-deploy, no en CI). El type-check es por tanto el unico chequeo
+# automatico aqui.
 
 on:
   push:
@@ -33,6 +37,3 @@ jobs:
 
       - name: Type check
         run: npx tsc --noEmit
-
-      - name: test
-        run: npm test
