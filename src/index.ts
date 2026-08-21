@@ -806,11 +806,28 @@ async function toolEnrichIoc(env: Env, args: Record<string, unknown>) {
 				? `\n\nAlso listed in public threat feeds (abuse.ch's URLhaus/ThreatFox/MalwareBazaar, plus USOM and IPsum) (corroboration, not part of the canonical feed):\n${JSON.stringify(data.external, null, 2)}`
 				: "";
 		// Optional IP network metadata merged upstream by /v1/ioc from the
-		// 6h ipmeta.json sidecar (ipinfo.io org/country/city).
-		const netBlock =
+		// 6h ipmeta.json sidecar (ipinfo.io org/country/city, plus an
+		// optional `drop` block when the IP's netblock and/or ASN has a hit
+		// on The Spamhaus Project's DROP/ASN-DROP netblock lists - cidr.sblid
+		// and asn.{asn,asname} are independent, either/both/neither may be
+		// present; sibling UI treatment is search/index.html's renderNetDrop()).
+		// Absence of `drop` means no hit was found, never "verified clean".
+		// A hit flags the NETWORK hosting this IP, NOT the IOC value itself -
+		// the label below says so explicitly so callers don't over-read it.
+		const netObj =
 			data.net && typeof data.net === "object" && !Array.isArray(data.net)
-				? `\n\nIP network metadata (ipinfo.io, third-party sidecar):\n${JSON.stringify(data.net, null, 2)}`
-				: "";
+				? (data.net as Record<string, unknown>)
+				: null;
+		const netDrop =
+			netObj && netObj.drop && typeof netObj.drop === "object" && !Array.isArray(netObj.drop)
+				? (netObj.drop as Record<string, unknown>)
+				: null;
+		const netLabel = netDrop
+			? "IP network metadata (ipinfo.io, third-party sidecar). `drop` is a separate annotation " +
+				"from The Spamhaus Project's DROP/ASN-DROP netblock lists: it flags the network hosting " +
+				"this IP, not the IOC value itself"
+			: "IP network metadata (ipinfo.io, third-party sidecar)";
+		const netBlock = netObj ? `\n\n${netLabel}:\n${JSON.stringify(netObj, null, 2)}` : "";
 		// Optional domain registration metadata merged upstream by /v1/ioc from
 		// the domainmeta sidecar (RDAP registrar/creation/nameservers plus
 		// resolved IPs/ASN at first-seen; domain/url lookups only, 30-day window).
