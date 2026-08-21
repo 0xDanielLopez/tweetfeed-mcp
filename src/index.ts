@@ -799,11 +799,11 @@ async function toolEnrichIoc(env: Env, args: Record<string, unknown>) {
 				? `\n\nAI context (from TweetFeed's 6h enrichment job):\n${JSON.stringify(data.ai, null, 2)}`
 				: "";
 		// Optional cross-feed corroboration merged upstream by /v1/ioc
-		// from the 6h external.json sidecar (URLhaus/ThreatFox/MalwareBazaar
-		// matches).
+		// from the 6h external.json sidecar (URLhaus/ThreatFox/MalwareBazaar/
+		// USOM/IPsum matches - see tweetfeed/external.py's module docstring).
 		const externalBlock =
 			Array.isArray(data.external) && data.external.length > 0
-				? `\n\nAlso listed in public abuse.ch feeds (URLhaus / ThreatFox / MalwareBazaar) (corroboration, not part of the canonical feed):\n${JSON.stringify(data.external, null, 2)}`
+				? `\n\nAlso listed in public threat feeds (abuse.ch's URLhaus/ThreatFox/MalwareBazaar, plus USOM and IPsum) (corroboration, not part of the canonical feed):\n${JSON.stringify(data.external, null, 2)}`
 				: "";
 		// Optional IP network metadata merged upstream by /v1/ioc from the
 		// 6h ipmeta.json sidecar (ipinfo.io org/country/city).
