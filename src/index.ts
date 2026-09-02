@@ -1051,8 +1051,10 @@ async function toolGetCampaigns(env: Env, args: Record<string, unknown>) {
 		infra: c.infra,
 		// Optional naming patterns (added 2026-08-29): up to 3 deterministic
 		// regexes over the campaign's own registered domains with evidence
-		// counts. Shadow upstream for now, so undefined on most documents and
-		// then dropped by JSON.stringify.
+		// counts. Live upstream since 2026-09-01, but still undefined on most
+		// documents - only a campaign whose domains generalise past every gate
+		// carries any (4 of 45 on 2026-09-02) - and then dropped by
+		// JSON.stringify.
 		patterns: c.patterns,
 		// Optional 365-day evidence behind the 30-day card (added 2026-08-29);
 		// undefined when the yearly scan failed and then dropped the same way.
