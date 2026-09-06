@@ -674,6 +674,17 @@ await test("GET / returns human-readable JSON", async () => {
 	assert(body.tools?.length >= 1, `no tools in landing: ${JSON.stringify(body)}`);
 });
 
+await test("GET /robots.txt returns permissive text robots file", async () => {
+	const r = await fetch(new URL("/robots.txt", URL_ENDPOINT), { method: "GET" });
+	assert(r.status === 200, `HTTP ${r.status}`);
+	assert(
+		(r.headers.get("content-type") ?? "").includes("text/plain"),
+		`wrong content-type: ${r.headers.get("content-type")}`,
+	);
+	const text = await r.text();
+	assert(text.startsWith("User-agent: *"), `wrong body: ${JSON.stringify(text)}`);
+});
+
 // ── Summary ────────────────────────────────────────────────────────────────
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) {

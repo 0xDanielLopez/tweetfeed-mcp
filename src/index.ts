@@ -1973,6 +1973,19 @@ export default {
 					},
 				});
 			}
+			// Permissive robots.txt. Without this exact-match, /robots.txt falls
+			// through to the generic JSON discovery body below (bots expect text).
+			if (url.pathname === "/robots.txt") {
+				return new Response("User-agent: *\nAllow: /\n", {
+					status: 200,
+					headers: {
+						"content-type": "text/plain; charset=utf-8",
+						"cache-control": "public, max-age=86400",
+						"access-control-allow-origin": "*",
+						"x-content-type-options": "nosniff",
+					},
+				});
+			}
 			const body = {
 				service: "tweetfeed-mcp",
 				protocol: "Model Context Protocol (MCP)",
