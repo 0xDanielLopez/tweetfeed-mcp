@@ -65,7 +65,7 @@ await test("ping returns empty result", async () => {
 
 console.log("\n## Tool discovery");
 
-await test("tools/list includes all 10 tools", async () => {
+await test("tools/list includes all 11 tools", async () => {
 	const r = await rpc("tools/list", {});
 	assert(r.body.result?.tools, "no tools");
 	const names = r.body.result.tools.map((t) => t.name);
@@ -79,6 +79,7 @@ await test("tools/list includes all 10 tools", async () => {
 		"get_trending",
 		"enrich_ioc",
 		"get_campaigns",
+		"get_campaign_iocs",
 		"get_trends",
 	]) {
 		assert(names.includes(expected), `missing ${expected}: ${names}`);
@@ -434,6 +435,58 @@ await test("get_campaigns rejects invalid min_confidence", async () => {
 		arguments: { min_confidence: "extreme" },
 	});
 	assert(r.body.error?.code === -32602, `expected INVALID_PARAMS, got: ${JSON.stringify(r.body)}`);
+});
+
+console.log("\n## get_campaign_iocs");
+
+await test("get_campaign_iocs rejects a malformed campaign_id without hitting upstream", async () => {
+	const r = await rpc("tools/call", {
+		name: "get_campaign_iocs",
+		arguments: { campaign_id: "tfc-XYZ" },
+	});
+	assert(r.body.error?.code === -32602, `expected INVALID_PARAMS, got: ${JSON.stringify(r.body)}`);
+});
+
+await test("get_campaign_iocs rejects a path-traversal campaign_id", async () => {
+	const r = await rpc("tools/call", {
+		name: "get_campaign_iocs",
+		arguments: { campaign_id: "../x" },
+	});
+	assert(r.body.error?.code === -32602, `expected INVALID_PARAMS, got: ${JSON.stringify(r.body)}`);
+});
+
+await test("get_campaign_iocs rejects a missing campaign_id", async () => {
+	const r = await rpc("tools/call", {
+		name: "get_campaign_iocs",
+		arguments: {},
+	});
+	assert(r.body.error?.code === -32602, `expected INVALID_PARAMS, got: ${JSON.stringify(r.body)}`);
+});
+
+await test("get_campaign_iocs rejects invalid type", async () => {
+	const r = await rpc("tools/call", {
+		name: "get_campaign_iocs",
+		arguments: { campaign_id: "tfc-1a2b3c4d5e6f", type: "wat" },
+	});
+	assert(r.body.error?.code === -32602, `expected INVALID_PARAMS, got: ${JSON.stringify(r.body)}`);
+});
+
+await test("get_campaign_iocs runs on a well-formed id (tolerant of upstream /v1/campaigns/<id> not deployed yet, or the id being unknown/expired)", async () => {
+	const r = await rpc("tools/call", {
+		name: "get_campaign_iocs",
+		arguments: { campaign_id: "tfc-1a2b3c4d5e6f", limit: 5 },
+	});
+	// The route is being added upstream in parallel and this well-formed id
+	// almost certainly isn't a real campaign, so a friendly "unknown/expired"
+	// text response, a normal render, or an upstream INTERNAL error are all
+	// valid pre-cutover outcomes - same tolerance as get_campaigns above.
+	assert(r.body.result?.content || r.body.error, `expected result or error: ${JSON.stringify(r.body)}`);
+	if (r.body.result?.content) {
+		const text = r.body.result.content[0]?.text ?? "";
+		assert(text.length > 10, `unexpectedly short response: ${text}`);
+	} else {
+		assert(r.body.error.code === -32603, `expected INTERNAL error code, got: ${JSON.stringify(r.body.error)}`);
+	}
 });
 
 console.log("\n## get_trends");
