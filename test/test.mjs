@@ -27,6 +27,9 @@ function assert(cond, msg) {
 }
 
 async function test(name, fn) {
+	// Pace the suite under the CF rate-limit rule on mcp.tweetfeed.live (>50
+	// requests / 10 s -> 429): 59 tests back-to-back trip it.
+	await new Promise((r) => setTimeout(r, 250));
 	try {
 		await fn();
 		console.log(`  ✓ ${name}`);
