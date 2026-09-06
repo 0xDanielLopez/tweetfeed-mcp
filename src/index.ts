@@ -484,6 +484,8 @@ interface IocLookupResult {
 	records?: unknown[];
 	ai?: Record<string, unknown>;
 	external?: unknown[];
+	// Set membership vs the 5 tracked feeds as of the sidecar refresh; absent when unknown.
+	external_exclusive?: boolean;
 	net?: Record<string, unknown>;
 	reg?: Record<string, unknown>;
 	// Optional campaign membership (AI clustering over the 30d window,
@@ -931,7 +933,9 @@ async function toolEnrichIoc(env: Env, args: Record<string, unknown>) {
 		const externalBlock =
 			Array.isArray(data.external) && data.external.length > 0
 				? `\n\nAlso listed in public threat feeds (abuse.ch's URLhaus/ThreatFox/MalwareBazaar, plus USOM and IPsum) (corroboration, not part of the canonical feed):\n${JSON.stringify(data.external, null, 2)}`
-				: "";
+				: data.external_exclusive === true
+					? "\n\nNot listed by URLhaus, ThreatFox, MalwareBazaar, USOM or IPsum as of the last cross-check (external_exclusive: true - set membership vs those 5 feeds, not a quality score; the newest reports are structurally uncorroborated)."
+					: "";
 		// Optional IP network metadata merged upstream by /v1/ioc from the
 		// 6h ipmeta.json sidecar (ipinfo.io org/country/city, plus an
 		// optional `drop` block when the IP's netblock and/or ASN has a hit
