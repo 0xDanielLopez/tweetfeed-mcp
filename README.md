@@ -26,6 +26,8 @@ intel programmatically.
 | `get_campaigns` | AI-clustered campaign groupings from the last 30 days, with optional brand and min-confidence filters. |
 | `get_campaign_iocs` | Full IOC membership (header + rows) of one campaign by id, with optional type filter and limit. |
 | `get_trends` | 31-day IOC trend analytics: daily volume by type, top moving tags week-over-week, most-abused TLDs, new vs recurring ratio, producer concentration. |
+| `search` | ChatGPT connector interface: find document ids (`ioc:<value>`, `tag:<tag>`, `campaign:<tfc-id>`) for an IOC value, tag, campaign id or free text. |
+| `fetch` | ChatGPT connector interface: full document (`{id, title, text, url, metadata}`) for an id returned by `search`. |
 
 ## Use with Claude Desktop / Claude.ai / other MCP clients
 
@@ -44,6 +46,13 @@ Or from the Claude Code CLI:
 ```bash
 claude mcp add tweetfeed https://mcp.tweetfeed.live/
 ```
+
+## Use as a ChatGPT connector
+
+ChatGPT (Settings > Connectors > Create, or a Deep research custom connector)
+accepts `https://mcp.tweetfeed.live/` with no authentication. The server
+exposes the required `search` and `fetch` tools alongside the others, and
+every result carries a tweetfeed.live URL so ChatGPT can cite it.
 
 ## Quick test
 

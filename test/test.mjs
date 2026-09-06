@@ -65,7 +65,7 @@ await test("ping returns empty result", async () => {
 
 console.log("\n## Tool discovery");
 
-await test("tools/list includes all 11 tools", async () => {
+await test("tools/list includes all 13 tools", async () => {
 	const r = await rpc("tools/list", {});
 	assert(r.body.result?.tools, "no tools");
 	const names = r.body.result.tools.map((t) => t.name);
@@ -81,6 +81,8 @@ await test("tools/list includes all 11 tools", async () => {
 		"get_campaigns",
 		"get_campaign_iocs",
 		"get_trends",
+		"search",
+		"fetch",
 	]) {
 		assert(names.includes(expected), `missing ${expected}: ${names}`);
 	}
@@ -563,6 +565,100 @@ await test("unknown method returns METHOD_NOT_FOUND", async () => {
 await test("unknown tool returns METHOD_NOT_FOUND via tools/call", async () => {
 	const r = await rpc("tools/call", { name: "nonexistent_tool", arguments: {} });
 	assert(r.body.error?.code === -32601, `wrong error: ${JSON.stringify(r.body.error)}`);
+});
+
+console.log("\n## search / fetch (ChatGPT connector)");
+
+await test("search rejects a missing query", async () => {
+	const r = await rpc("tools/call", { name: "search", arguments: {} });
+	assert(r.body.error?.code === -32602, `expected INVALID_PARAMS, got: ${JSON.stringify(r.body)}`);
+});
+
+await test("search returns {results:[]} shape for gibberish", async () => {
+	const r = await rpc("tools/call", {
+		name: "search",
+		arguments: { query: "zz-no-such-thing-9f8e7d" },
+	});
+	assert(!r.body.error, `unexpected error: ${JSON.stringify(r.body.error)}`);
+	const structured = r.body.result?.structuredContent;
+	assert(Array.isArray(structured?.results), `results not an array: ${JSON.stringify(r.body.result)}`);
+	const fromText = JSON.parse(r.body.result.content[0].text);
+	assert(JSON.stringify(fromText) === JSON.stringify(structured), "content[0].text does not match structuredContent");
+});
+
+await test("search finds the phishing tag", async () => {
+	const r = await rpc("tools/call", { name: "search", arguments: { query: "phishing" } });
+	const results = r.body.result?.structuredContent?.results ?? [];
+	const hit = results.find((x) => x.id === "tag:phishing");
+	assert(hit, `no tag:phishing result: ${JSON.stringify(results)}`);
+	assert(hit.url === "https://tweetfeed.live/tag/phishing/", `wrong url: ${hit.url}`);
+});
+
+await test("search on a campaign id form does not hit unrelated sources", async () => {
+	const r = await rpc("tools/call", { name: "search", arguments: { query: "tfc-000000000000" } });
+	assert(!r.body.error, `unexpected error: ${JSON.stringify(r.body.error)}`);
+	assert(Array.isArray(r.body.result?.structuredContent?.results), "results not an array");
+});
+
+await test("fetch rejects an unknown id prefix", async () => {
+	const r = await rpc("tools/call", { name: "fetch", arguments: { id: "doc:1" } });
+	assert(r.body.error?.code === -32602, `expected INVALID_PARAMS, got: ${JSON.stringify(r.body)}`);
+});
+
+await test("fetch rejects a missing id", async () => {
+	const r = await rpc("tools/call", { name: "fetch", arguments: {} });
+	assert(r.body.error?.code === -32602, `expected INVALID_PARAMS, got: ${JSON.stringify(r.body)}`);
+});
+
+await test("fetch tag:phishing returns full document", async () => {
+	const r = await rpc("tools/call", { name: "fetch", arguments: { id: "tag:phishing" } });
+	assert(!r.body.error, `unexpected error: ${JSON.stringify(r.body.error)}`);
+	const structured = r.body.result.structuredContent;
+	assert(structured.id === "tag:phishing", `wrong id: ${structured.id}`);
+	assert(typeof structured.title === "string", "title not a string");
+	assert(typeof structured.text === "string", "text not a string");
+	assert(structured.url.endsWith("/tag/phishing/"), `wrong url: ${structured.url}`);
+	assert(structured.metadata?.counts && typeof structured.metadata.counts === "object", "missing metadata.counts");
+	const fromText = JSON.parse(r.body.result.content[0].text);
+	assert(fromText.id === "tag:phishing", "content[0].text id mismatch");
+});
+
+await test("fetch campaign:<malformed> rejected", async () => {
+	const r = await rpc("tools/call", { name: "fetch", arguments: { id: "campaign:../etc" } });
+	assert(r.body.error?.code === -32602, `expected INVALID_PARAMS, got: ${JSON.stringify(r.body)}`);
+});
+
+await test("fetch campaign:tfc-000000000000 (unknown) returns a valid document, not an error", async () => {
+	const r = await rpc("tools/call", { name: "fetch", arguments: { id: "campaign:tfc-000000000000" } });
+	assert(!r.body.error, `unexpected error: ${JSON.stringify(r.body.error)}`);
+	const structured = r.body.result.structuredContent;
+	assert(structured.id === "campaign:tfc-000000000000", `wrong id: ${structured.id}`);
+	assert(/not/i.test(structured.text), `expected text to mention "not": ${structured.text}`);
+});
+
+await test("fetch ioc:example.com returns a document", async () => {
+	const r = await rpc("tools/call", { name: "fetch", arguments: { id: "ioc:example.com" } });
+	assert(!r.body.error, `unexpected error: ${JSON.stringify(r.body.error)}`);
+	const structured = r.body.result.structuredContent;
+	assert(structured.id === "ioc:example.com", `wrong id: ${structured.id}`);
+	assert(structured.metadata?.type === "domain", `wrong metadata.type: ${structured.metadata?.type}`);
+	assert(structured.url.includes("search/?q=example.com"), `wrong url: ${structured.url}`);
+});
+
+await test("GET with Accept: text/event-stream is 405", async () => {
+	const r = await fetch(URL_ENDPOINT, { headers: { Accept: "text/event-stream" } });
+	assert(r.status === 405, `expected 405, got ${r.status}`);
+});
+
+await test("POST notification returns 202 empty", async () => {
+	const r = await fetch(URL_ENDPOINT, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }),
+	});
+	assert(r.status === 202, `expected 202, got ${r.status}`);
+	const text = await r.text();
+	assert(text === "", `expected empty body, got: ${JSON.stringify(text)}`);
 });
 
 console.log("\n## HTTP surface");
