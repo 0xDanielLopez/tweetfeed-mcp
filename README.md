@@ -26,6 +26,7 @@ intel programmatically.
 | `get_campaigns` | AI-clustered campaign groupings from the last 30 days, with optional brand and min-confidence filters. |
 | `get_campaign_iocs` | Full IOC membership (header + rows) of one campaign by id, with optional type filter and limit. |
 | `get_trends` | 31-day IOC trend analytics: daily volume by type, top moving tags week-over-week, most-abused TLDs, new vs recurring ratio, producer concentration. |
+| `get_feed_status` | Live pipeline health: freshness verdict per artifact (stale, age_seconds) and source coverage (which hashtag/account feeds delivered rows in the last 24h, which account feeds are dead). |
 | `search` | ChatGPT connector interface: find document ids (`ioc:<value>`, `tag:<tag>`, `campaign:<tfc-id>`) for an IOC value, tag, campaign id or free text. |
 | `fetch` | ChatGPT connector interface: full document (`{id, title, text, url, metadata}`) for an id returned by `search`. |
 

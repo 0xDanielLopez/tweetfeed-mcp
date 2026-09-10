@@ -68,7 +68,7 @@ await test("ping returns empty result", async () => {
 
 console.log("\n## Tool discovery");
 
-await test("tools/list includes all 13 tools", async () => {
+await test("tools/list includes all 14 tools", async () => {
 	const r = await rpc("tools/list", {});
 	assert(r.body.result?.tools, "no tools");
 	const names = r.body.result.tools.map((t) => t.name);
@@ -84,6 +84,7 @@ await test("tools/list includes all 13 tools", async () => {
 		"get_campaigns",
 		"get_campaign_iocs",
 		"get_trends",
+		"get_feed_status",
 		"search",
 		"fetch",
 	]) {
@@ -556,6 +557,16 @@ await test("get_trends rejects invalid section", async () => {
 		arguments: { section: "decade" },
 	});
 	assert(r.body.error?.code === -32602, `expected INVALID_PARAMS, got: ${JSON.stringify(r.body)}`);
+});
+
+console.log("\n## get_feed_status");
+
+await test("get_feed_status returns a summary + full status document", async () => {
+	const r = await rpc("tools/call", { name: "get_feed_status", arguments: {} });
+	assert(r.body.result?.content, `no content: ${JSON.stringify(r.body)}`);
+	const text = r.body.result.content[0]?.text ?? "";
+	assert(text.startsWith("Pipeline:"), `missing Pipeline summary: ${text.slice(0, 200)}`);
+	assert(text.includes("Sources:"), `missing Sources summary: ${text.slice(0, 200)}`);
 });
 
 console.log("\n## Error handling");
