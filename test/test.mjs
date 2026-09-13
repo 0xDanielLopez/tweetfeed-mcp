@@ -435,6 +435,13 @@ await test("get_campaigns runs (tolerant of upstream /v1/campaigns not deployed 
 	}
 });
 
+await test("get_campaigns with no args (default) stays well under a client's 25k-token cap", async () => {
+	const r = await rpc("tools/call", { name: "get_campaigns", arguments: {} });
+	if (!r.body.result?.content) return; // same pre-cutover tolerance as the test above
+	const text = r.body.result.content[0].text;
+	assert(text.length < 40000, `default-args response too large: ${text.length} chars`);
+});
+
 await test("get_campaigns rejects invalid min_confidence", async () => {
 	const r = await rpc("tools/call", {
 		name: "get_campaigns",

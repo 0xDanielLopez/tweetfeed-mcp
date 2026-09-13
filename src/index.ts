@@ -1216,7 +1216,9 @@ async function toolGetCampaigns(env: Env, args: Record<string, unknown>) {
 		);
 	}
 
-	// Trim each campaign for token economy: keep the first 5 sample IOCs and drop
+	// Trim each campaign for token economy: keep the first 2 sample IOCs (cut from 5 on
+	// 2026-09-13: default get_campaigns response was ~70k chars, 56% of it this sample;
+	// get_campaign_iocs serves the full list) and drop
 	// the internal clustering fields (member_cluster_ids, anchors) that are not
 	// useful to an agent consuming this tool - except anchors.families, see
 	// projectAnchorFamilies. `related` (phishunt.io corroboration, added
@@ -1273,7 +1275,7 @@ async function toolGetCampaigns(env: Env, args: Record<string, unknown>) {
 		reporters: c.reporters,
 		// Sliced rows pass through wholesale, so each one's optional `ai`/`net`
 		// fields (mirroring enrich_ioc) ride along for free with no extra work.
-		iocs: Array.isArray(c.iocs) ? c.iocs.slice(0, 5) : [],
+		iocs: Array.isArray(c.iocs) ? c.iocs.slice(0, 2) : [],
 	}));
 
 	return textContent(
