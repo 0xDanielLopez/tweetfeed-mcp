@@ -268,8 +268,8 @@ const TOOLS = [
 				},
 				limit: {
 					type: "number",
-					description: "Optional: max campaigns to return (1-50). Default 20.",
-					default: 20,
+					description: "Optional: max campaigns to return (1-50). Default 10.",
+					default: 10,
 				},
 			},
 		},
@@ -1171,7 +1171,7 @@ async function toolGetCampaigns(env: Env, args: Record<string, unknown>) {
 			message: `'min_confidence' must be one of: low, medium, high (got: '${minConfidence}')`,
 		};
 	}
-	const limit = clampInt(args.limit, 1, 50, 20);
+	const limit = clampInt(args.limit, 1, 50, 10);
 
 	const url = `${API_BASE}/v1/campaigns`;
 	const r = await env.API.fetch(new Request(url, { headers: { "User-Agent": UA } }));
