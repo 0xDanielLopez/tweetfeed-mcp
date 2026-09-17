@@ -100,6 +100,15 @@ await test("each tool has inputSchema + description", async () => {
 	}
 });
 
+await test("every tool declares annotations.readOnlyHint (14 tools, all read-only)", async () => {
+	const r = await rpc("tools/list", {});
+	const tools = r.body.result.tools;
+	for (const tool of tools) {
+		assert(tool.annotations?.readOnlyHint === true, `${tool.name} missing annotations.readOnlyHint`);
+	}
+	assert(tools.length === 14, `expected 14 tools, got ${tools.length}`);
+});
+
 console.log("\n## query_iocs");
 
 await test("query_iocs with just time=today returns IOCs", async () => {

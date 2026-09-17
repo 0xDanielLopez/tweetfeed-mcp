@@ -112,6 +112,7 @@ const TOOLS = [
 			},
 			required: ["time"],
 		},
+		annotations: { readOnlyHint: true, openWorldHint: true },
 	},
 	{
 		name: "check_url",
@@ -128,6 +129,7 @@ const TOOLS = [
 			},
 			required: ["url"],
 		},
+		annotations: { readOnlyHint: true, openWorldHint: true },
 	},
 	{
 		name: "check_ip",
@@ -143,6 +145,7 @@ const TOOLS = [
 			},
 			required: ["ip"],
 		},
+		annotations: { readOnlyHint: true, openWorldHint: true },
 	},
 	{
 		name: "check_hash",
@@ -159,6 +162,7 @@ const TOOLS = [
 			},
 			required: ["hash"],
 		},
+		annotations: { readOnlyHint: true, openWorldHint: true },
 	},
 	{
 		name: "list_recent_iocs",
@@ -188,6 +192,7 @@ const TOOLS = [
 			},
 			required: ["since"],
 		},
+		annotations: { readOnlyHint: true, openWorldHint: true },
 	},
 	{
 		name: "get_tag_info",
@@ -209,6 +214,7 @@ const TOOLS = [
 			},
 			required: ["tag"],
 		},
+		annotations: { readOnlyHint: true, openWorldHint: true },
 	},
 	{
 		name: "get_trending",
@@ -231,6 +237,7 @@ const TOOLS = [
 			},
 			required: ["window"],
 		},
+		annotations: { readOnlyHint: true, openWorldHint: true },
 	},
 	{
 		name: "enrich_ioc",
@@ -247,6 +254,7 @@ const TOOLS = [
 			},
 			required: ["value"],
 		},
+		annotations: { readOnlyHint: true, openWorldHint: true },
 	},
 	{
 		name: "get_campaigns",
@@ -273,6 +281,7 @@ const TOOLS = [
 				},
 			},
 		},
+		annotations: { readOnlyHint: true, openWorldHint: true },
 	},
 	{
 		name: "get_campaign_iocs",
@@ -299,6 +308,7 @@ const TOOLS = [
 			},
 			required: ["campaign_id"],
 		},
+		annotations: { readOnlyHint: true, openWorldHint: true },
 	},
 	{
 		name: "get_trends",
@@ -316,6 +326,7 @@ const TOOLS = [
 				},
 			},
 		},
+		annotations: { readOnlyHint: true, openWorldHint: true },
 	},
 	{
 		name: "get_feed_status",
@@ -325,6 +336,7 @@ const TOOLS = [
 			type: "object",
 			properties: {},
 		},
+		annotations: { readOnlyHint: true, openWorldHint: true },
 	},
 	{
 		name: "search",
