@@ -30,6 +30,24 @@ intel programmatically.
 | `search` | ChatGPT connector interface: find document ids (`ioc:<value>`, `tag:<tag>`, `campaign:<tfc-id>`) for an IOC value, tag, campaign id or free text. |
 | `fetch` | ChatGPT connector interface: full document (`{id, title, text, url, metadata}`) for an id returned by `search`. |
 
+## Resources
+
+Besides the 14 tools, the server exposes the feed as MCP resources (`resources/list`, `resources/templates/list`, `resources/read`): 7 static documents plus 2 URI templates, each returning the raw JSON of the matching api.tweetfeed.live document. Tools are the filtered, size-bounded path; resources are for clients that want a whole document (a status panel, a whole-window blocklist sync).
+
+| URI | Content |
+|---|---|
+| `tweetfeed://status` | Pipeline health plus per-source coverage (mirrors `/v1/status`, ~13 KB, refreshed every 15 min). |
+| `tweetfeed://counts` | Aggregate IOC counts per window/type/tag (mirrors `/v1/counts`, ~3 KB). |
+| `tweetfeed://trends` | 31-day trend analytics (mirrors `/v1/trends`, ~4 KB, daily). |
+| `tweetfeed://campaigns` | AI-clustered campaigns of the trailing 30 days (mirrors `/v1/campaigns`, ~300 KB, daily). |
+| `tweetfeed://iocs/today` | Every IOC row shared today (mirrors `/v1/today`, 10-50 KB). |
+| `tweetfeed://iocs/week` | Last 7 days (mirrors `/v1/week`, 100-300 KB). |
+| `tweetfeed://iocs/month` | Last 30 days (mirrors `/v1/month`, 0.5-1 MB, API caps at 10,000 rows). |
+| `tweetfeed://iocs/{time}/{type}` | Template - time: today\|week\|month, type: url\|domain\|ip\|sha256\|md5 (mirrors `/v1/{time}/{type}`). |
+| `tweetfeed://campaigns/{id}` | Template - id = `tfc-` plus 12 hex chars (mirrors `/v1/campaigns/{id}`). |
+
+An unknown URI or an expired campaign id returns JSON-RPC error -32002 "Resource not found".
+
 ## Use with Claude Desktop / Claude.ai / other MCP clients
 
 ```json
@@ -68,6 +86,12 @@ curl -sX POST https://mcp.tweetfeed.live/ \
   -d '{"jsonrpc":"2.0","method":"tools/call","id":2,
        "params":{"name":"query_iocs",
                  "arguments":{"time":"today","tag":"phishing","type":"url","limit":5}}}' | jq .
+
+# Example resource read:
+curl -sX POST https://mcp.tweetfeed.live/ \
+  -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","method":"resources/read","id":3,
+       "params":{"uri":"tweetfeed://status"}}' | jq .
 ```
 
 ## Develop

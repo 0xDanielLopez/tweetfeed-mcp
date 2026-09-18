@@ -45,7 +45,7 @@ console.log(`\nTarget: ${URL_ENDPOINT}\n`);
 
 console.log("## Protocol handshake");
 
-await test("initialize returns server info + protocol version + tools capability", async () => {
+await test("initialize returns server info + protocol version + tools/resources capabilities", async () => {
 	const r = await rpc("initialize", {
 		protocolVersion: "2025-03-26",
 		capabilities: {},
@@ -58,6 +58,7 @@ await test("initialize returns server info + protocol version + tools capability
 	assert(r.body.result.serverInfo?.name === "tweetfeed-mcp", "wrong server name");
 	assert(r.body.result.protocolVersion === "2025-03-26", "wrong protocol version");
 	assert(r.body.result.capabilities?.tools !== undefined, "missing tools capability");
+	assert(r.body.result.capabilities?.resources !== undefined, "missing resources capability");
 });
 
 await test("ping returns empty result", async () => {
@@ -691,6 +692,98 @@ await test("POST notification returns 202 empty", async () => {
 	assert(text === "", `expected empty body, got: ${JSON.stringify(text)}`);
 });
 
+console.log("\n## Resources");
+
+const STATIC_RESOURCE_URIS = [
+	"tweetfeed://status",
+	"tweetfeed://counts",
+	"tweetfeed://trends",
+	"tweetfeed://campaigns",
+	"tweetfeed://iocs/today",
+	"tweetfeed://iocs/week",
+	"tweetfeed://iocs/month",
+];
+
+await test("resources/list returns the 7 static resources with uri/name/mimeType", async () => {
+	const r = await rpc("resources/list", {});
+	assert(!r.body.error, `unexpected error: ${JSON.stringify(r.body.error)}`);
+	const res = r.body.result?.resources;
+	assert(Array.isArray(res) && res.length === 7, `expected 7 resources, got ${res?.length}`);
+	for (const x of res) {
+		assert(typeof x.uri === "string" && x.uri.startsWith("tweetfeed://"), `bad uri: ${x.uri}`);
+		assert(typeof x.name === "string" && x.name, `missing name for ${x.uri}`);
+		assert(x.mimeType === "application/json", `bad mimeType for ${x.uri}: ${x.mimeType}`);
+	}
+	const uris = res.map((x) => x.uri);
+	for (const u of STATIC_RESOURCE_URIS) assert(uris.includes(u), `missing ${u}`);
+	assert(new Set(res.map((x) => x.name)).size === 7, "resource names are not unique");
+});
+
+await test("resources/templates/list returns the iocs-by-type and campaign templates", async () => {
+	const r = await rpc("resources/templates/list", {});
+	assert(!r.body.error, `unexpected error: ${JSON.stringify(r.body.error)}`);
+	const t = r.body.result?.resourceTemplates;
+	assert(Array.isArray(t) && t.length === 2, `expected 2 templates, got ${t?.length}`);
+	const ut = t.map((x) => x.uriTemplate);
+	assert(ut.includes("tweetfeed://iocs/{time}/{type}"), `missing iocs template: ${ut}`);
+	assert(ut.includes("tweetfeed://campaigns/{id}"), `missing campaign template: ${ut}`);
+});
+
+async function readResource(uri) {
+	const r = await rpc("resources/read", { uri });
+	assert(!r.body.error, `unexpected error for ${uri}: ${JSON.stringify(r.body.error)}`);
+	const c = r.body.result?.contents;
+	assert(Array.isArray(c) && c.length === 1, `expected 1 content item for ${uri}, got ${c?.length}`);
+	assert(c[0].uri === uri, `uri not echoed for ${uri}: ${c[0].uri}`);
+	assert(c[0].mimeType === "application/json", `bad mimeType for ${uri}: ${c[0].mimeType}`);
+	return JSON.parse(c[0].text);
+}
+
+await test("resources/read tweetfeed://status returns the /v1/status document", async () => {
+	const doc = await readResource("tweetfeed://status");
+	assert(doc && typeof doc === "object" && doc.artifacts, `status lacks artifacts: ${Object.keys(doc ?? {})}`);
+});
+
+await test("resources/read tweetfeed://counts returns an object", async () => {
+	const doc = await readResource("tweetfeed://counts");
+	assert(doc && typeof doc === "object" && !Array.isArray(doc), "counts is not an object");
+});
+
+await test("resources/read tweetfeed://iocs/today/url returns only type=url rows", async () => {
+	const rows = await readResource("tweetfeed://iocs/today/url");
+	assert(Array.isArray(rows), "rows is not an array");
+	for (const row of rows) assert(row.type === "url", `non-url row: ${JSON.stringify(row).slice(0, 120)}`);
+});
+
+await test("resources/read tweetfeed://campaigns/{id} returns the campaign named in the index", async () => {
+	const idx = await readResource("tweetfeed://campaigns");
+	assert(Array.isArray(idx.campaigns) && idx.campaigns.length > 0, "campaign index is empty");
+	const id = idx.campaigns[0].id;
+	assert(/^tfc-[0-9a-f]{12}$/.test(id), `unexpected campaign id: ${id}`);
+	const c = await readResource(`tweetfeed://campaigns/${id}`);
+	assert(c.id === id || c.campaign?.id === id, `campaign id mismatch: ${JSON.stringify(c).slice(0, 120)}`);
+});
+
+await test("resources/read unknown campaign id is -32002 Resource not found", async () => {
+	const r = await rpc("resources/read", { uri: "tweetfeed://campaigns/tfc-000000000000" });
+	assert(r.body.error?.code === -32002, `expected -32002, got ${JSON.stringify(r.body.error ?? r.body.result).slice(0, 160)}`);
+});
+
+await test("resources/read unknown URI is -32002 Resource not found", async () => {
+	const r = await rpc("resources/read", { uri: "tweetfeed://nope" });
+	assert(r.body.error?.code === -32002, `expected -32002, got ${JSON.stringify(r.body.error ?? r.body.result).slice(0, 160)}`);
+});
+
+await test("resources/read rejects a window outside the template (year) with -32002", async () => {
+	const r = await rpc("resources/read", { uri: "tweetfeed://iocs/year/url" });
+	assert(r.body.error?.code === -32002, `expected -32002, got ${JSON.stringify(r.body.error ?? r.body.result).slice(0, 160)}`);
+});
+
+await test("resources/read without uri is -32602 invalid params", async () => {
+	const r = await rpc("resources/read", {});
+	assert(r.body.error?.code === -32602, `expected -32602, got ${JSON.stringify(r.body.error ?? r.body.result).slice(0, 160)}`);
+});
+
 console.log("\n## HTTP surface");
 
 await test("GET / returns human-readable JSON", async () => {
@@ -699,6 +792,8 @@ await test("GET / returns human-readable JSON", async () => {
 	const body = await r.json();
 	assert(body.service === "tweetfeed-mcp", `wrong service: ${body.service}`);
 	assert(body.tools?.length >= 1, `no tools in landing: ${JSON.stringify(body)}`);
+	assert(body.resources?.length === 7, `expected 7 resources in landing, got ${body.resources?.length}`);
+	assert(body.resourceTemplates?.length === 2, `expected 2 resource templates in landing, got ${body.resourceTemplates?.length}`);
 });
 
 await test("GET /robots.txt returns permissive text robots file", async () => {
