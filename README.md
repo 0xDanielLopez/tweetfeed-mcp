@@ -48,6 +48,16 @@ Besides the 14 tools, the server exposes the feed as MCP resources (`resources/l
 
 An unknown URI or an expired campaign id returns JSON-RPC error -32002 "Resource not found".
 
+## Prompts
+
+Besides the 14 tools and the resources above, the server also speaks MCP prompts (`prompts/list`, `prompts/get`, params `name` and `arguments` as strings): ready-made recipes that chain several tool calls into one instruction sequence for the model to run and report back on. Where tools are chosen by the model and resources are raw documents, prompts are recipes the user invokes directly - they show up as slash commands in Claude Desktop and Claude Code.
+
+| Name | Arguments | Purpose |
+|---|---|---|
+| `triage_ioc` | `ioc` (required), `context` (optional) | Step-by-step triage of one IOC (URL/domain/IP/MD5/SHA-256): enrichment, campaign membership, verdict and recommended action. |
+| `daily_brief` | `window` (optional, `today` default \| `week`) | Short brief: feed health, volume and mix, moving tags, active high-confidence campaigns, abused TLDs. |
+| `campaign_summary` | `campaign_id` (required, `tfc-` plus 12 hex) | Hand-off summary of one campaign: context, targeting, ATT&CK techniques, IOC breakdown, infrastructure, block-ready lists, CSV/STIX links. |
+
 ## Use with Claude Desktop / Claude.ai / other MCP clients
 
 ```json
@@ -92,6 +102,12 @@ curl -sX POST https://mcp.tweetfeed.live/ \
   -H 'content-type: application/json' \
   -d '{"jsonrpc":"2.0","method":"resources/read","id":3,
        "params":{"uri":"tweetfeed://status"}}' | jq .
+
+# Example prompt call:
+curl -sX POST https://mcp.tweetfeed.live/ \
+  -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","method":"prompts/get","id":4,
+       "params":{"name":"triage_ioc","arguments":{"ioc":"example.com"}}}' | jq .
 ```
 
 ## Develop

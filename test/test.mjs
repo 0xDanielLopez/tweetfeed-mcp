@@ -45,7 +45,7 @@ console.log(`\nTarget: ${URL_ENDPOINT}\n`);
 
 console.log("## Protocol handshake");
 
-await test("initialize returns server info + protocol version + tools/resources capabilities", async () => {
+await test("initialize returns server info + protocol version + tools/resources/prompts capabilities", async () => {
 	const r = await rpc("initialize", {
 		protocolVersion: "2025-03-26",
 		capabilities: {},
@@ -59,6 +59,7 @@ await test("initialize returns server info + protocol version + tools/resources 
 	assert(r.body.result.protocolVersion === "2025-03-26", "wrong protocol version");
 	assert(r.body.result.capabilities?.tools !== undefined, "missing tools capability");
 	assert(r.body.result.capabilities?.resources !== undefined, "missing resources capability");
+	assert(r.body.result.capabilities?.prompts !== undefined, "missing prompts capability");
 });
 
 await test("ping returns empty result", async () => {
@@ -692,6 +693,68 @@ await test("POST notification returns 202 empty", async () => {
 	assert(text === "", `expected empty body, got: ${JSON.stringify(text)}`);
 });
 
+console.log("\n## Prompts");
+
+await test("prompts/list returns the 3 recipes with argument specs", async () => {
+	const r = await rpc("prompts/list", {});
+	assert(!r.body.error, `unexpected error: ${JSON.stringify(r.body.error)}`);
+	const p = r.body.result?.prompts;
+	assert(Array.isArray(p) && p.length === 3, `expected 3 prompts, got ${p?.length}`);
+	const names = p.map((x) => x.name);
+	for (const n of ["triage_ioc", "daily_brief", "campaign_summary"]) assert(names.includes(n), `missing prompt ${n}`);
+	for (const x of p) assert(Array.isArray(x.arguments), `prompt ${x.name} lacks arguments array`);
+	const triage = p.find((x) => x.name === "triage_ioc");
+	assert(triage.arguments.some((a) => a.name === "ioc" && a.required === true), "triage_ioc: ioc not required");
+});
+
+await test("prompts/get triage_ioc returns a user message naming the IOC and enrich_ioc", async () => {
+	const r = await rpc("prompts/get", { name: "triage_ioc", arguments: { ioc: "example.com" } });
+	assert(!r.body.error, `unexpected error: ${JSON.stringify(r.body.error)}`);
+	const m = r.body.result?.messages;
+	assert(Array.isArray(m) && m.length === 1, `expected 1 message, got ${m?.length}`);
+	assert(m[0].role === "user", `wrong role: ${m[0].role}`);
+	assert(m[0].content?.type === "text", `wrong content type: ${m[0].content?.type}`);
+	assert(m[0].content.text.includes("example.com"), "IOC not in prompt text");
+	assert(m[0].content.text.includes("enrich_ioc"), "enrich_ioc not in prompt text");
+	assert(typeof r.body.result.description === "string", "missing description");
+});
+
+await test("prompts/get triage_ioc without ioc is -32602", async () => {
+	const r = await rpc("prompts/get", { name: "triage_ioc", arguments: {} });
+	assert(r.body.error?.code === -32602, `expected -32602, got ${JSON.stringify(r.body.error ?? r.body.result).slice(0, 160)}`);
+});
+
+await test("prompts/get daily_brief defaults the window to today", async () => {
+	const r = await rpc("prompts/get", { name: "daily_brief" });
+	assert(!r.body.error, `unexpected error: ${JSON.stringify(r.body.error)}`);
+	const text = r.body.result?.messages?.[0]?.content?.text ?? "";
+	assert(text.includes('window "today"'), `default window missing: ${text.slice(0, 120)}`);
+	assert(text.includes("get_feed_status") && text.includes("get_trends"), "brief recipe does not name its tools");
+});
+
+await test("prompts/get daily_brief rejects an unknown window with -32602", async () => {
+	const r = await rpc("prompts/get", { name: "daily_brief", arguments: { window: "year" } });
+	assert(r.body.error?.code === -32602, `expected -32602, got ${JSON.stringify(r.body.error ?? r.body.result).slice(0, 160)}`);
+});
+
+await test("prompts/get campaign_summary embeds the id and the STIX download link", async () => {
+	const r = await rpc("prompts/get", { name: "campaign_summary", arguments: { campaign_id: "tfc-0123456789ab" } });
+	assert(!r.body.error, `unexpected error: ${JSON.stringify(r.body.error)}`);
+	const text = r.body.result?.messages?.[0]?.content?.text ?? "";
+	assert(text.includes('campaign_id "tfc-0123456789ab"'), "campaign id not in prompt text");
+	assert(text.includes("/v1/campaigns/tfc-0123456789ab.stix.json"), "STIX link not in prompt text");
+});
+
+await test("prompts/get campaign_summary rejects a malformed id with -32602", async () => {
+	const r = await rpc("prompts/get", { name: "campaign_summary", arguments: { campaign_id: "nope" } });
+	assert(r.body.error?.code === -32602, `expected -32602, got ${JSON.stringify(r.body.error ?? r.body.result).slice(0, 160)}`);
+});
+
+await test("prompts/get unknown prompt is -32602", async () => {
+	const r = await rpc("prompts/get", { name: "nope", arguments: {} });
+	assert(r.body.error?.code === -32602, `expected -32602, got ${JSON.stringify(r.body.error ?? r.body.result).slice(0, 160)}`);
+});
+
 console.log("\n## Resources");
 
 const STATIC_RESOURCE_URIS = [
@@ -794,6 +857,7 @@ await test("GET / returns human-readable JSON", async () => {
 	assert(body.tools?.length >= 1, `no tools in landing: ${JSON.stringify(body)}`);
 	assert(body.resources?.length === 7, `expected 7 resources in landing, got ${body.resources?.length}`);
 	assert(body.resourceTemplates?.length === 2, `expected 2 resource templates in landing, got ${body.resourceTemplates?.length}`);
+	assert(body.prompts?.length === 3, `expected 3 prompts in landing, got ${body.prompts?.length}`);
 });
 
 await test("GET /robots.txt returns permissive text robots file", async () => {
