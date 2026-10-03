@@ -1032,6 +1032,9 @@ async function toolEnrichIoc(env: Env, args: Record<string, unknown>) {
 		// Absence of `drop` means no hit was found, never "verified clean".
 		// A hit flags the NETWORK hosting this IP, NOT the IOC value itself -
 		// the label below says so explicitly so callers don't over-read it.
+		// Same for the optional `range` block (official published IP range of a
+		// known provider that contains this IP): it describes the network, not
+		// the IOC, and is not a verdict. The JSON is passed through verbatim.
 		const netObj =
 			data.net && typeof data.net === "object" && !Array.isArray(data.net)
 				? (data.net as Record<string, unknown>)
@@ -1040,11 +1043,20 @@ async function toolEnrichIoc(env: Env, args: Record<string, unknown>) {
 			netObj && netObj.drop && typeof netObj.drop === "object" && !Array.isArray(netObj.drop)
 				? (netObj.drop as Record<string, unknown>)
 				: null;
-		const netLabel = netDrop
-			? "IP network metadata (ipinfo.io, third-party sidecar). `drop` is a separate annotation " +
-				"from The Spamhaus Project's DROP/ASN-DROP netblock lists: it flags the network hosting " +
-				"this IP, not the IOC value itself"
-			: "IP network metadata (ipinfo.io, third-party sidecar)";
+		const netRange =
+			netObj && netObj.range && typeof netObj.range === "object" && !Array.isArray(netObj.range)
+				? (netObj.range as Record<string, unknown>)
+				: null;
+		const netLabel =
+			"IP network metadata (ipinfo.io, third-party sidecar)" +
+			(netDrop
+				? ". `drop` is a separate annotation from The Spamhaus Project's DROP/ASN-DROP netblock " +
+					"lists: it flags the network hosting this IP, not the IOC value itself"
+				: "") +
+			(netRange
+				? ". net.range: official provider IP range that contains this IP (for example AWS EC2, " +
+					"GitHub Actions). It describes the network, not the IOC. It is not a verdict"
+				: "");
 		const netBlock = netObj ? `\n\n${netLabel}:\n${JSON.stringify(netObj, null, 2)}` : "";
 		// Optional domain registration metadata merged upstream by /v1/ioc from
 		// the domainmeta sidecar (RDAP registrar/creation/nameservers plus
