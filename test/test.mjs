@@ -111,6 +111,14 @@ await test("every tool declares annotations.readOnlyHint (14 tools, all read-onl
 	assert(tools.length === 14, `expected 14 tools, got ${tools.length}`);
 });
 
+await test("every tool declares a short title (top-level and annotations.title)", async () => {
+	const r = await rpc("tools/list", {});
+	for (const tool of r.body.result.tools) {
+		assert(typeof tool.title === "string" && tool.title.length >= 3 && tool.title.length <= 40, `${tool.name} missing or bad title`);
+		assert(tool.annotations?.title === tool.title, `${tool.name} annotations.title differs from title`);
+	}
+});
+
 console.log("\n## query_iocs");
 
 await test("query_iocs with just time=today returns IOCs", async () => {
