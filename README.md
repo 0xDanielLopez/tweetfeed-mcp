@@ -37,12 +37,12 @@ Besides the 14 tools, the server exposes the feed as MCP resources (`resources/l
 | URI | Content |
 |---|---|
 | `tweetfeed://status` | Pipeline health plus per-source coverage (mirrors `/v1/status`, ~13 KB, refreshed every 15 min). |
-| `tweetfeed://counts` | Aggregate IOC counts per window/type/tag (mirrors `/v1/counts`, ~3 KB). |
+| `tweetfeed://counts` | Aggregate IOC counts per window/type/tag (mirrors `/v1/counts`, ~6 KB). |
 | `tweetfeed://trends` | 31-day trend analytics (mirrors `/v1/trends`, ~4 KB, daily). |
 | `tweetfeed://campaigns` | AI-clustered campaigns of the trailing 30 days (mirrors `/v1/campaigns`, ~300 KB, daily). |
-| `tweetfeed://iocs/today` | Every IOC row shared today (mirrors `/v1/today`, 10-50 KB). |
-| `tweetfeed://iocs/week` | Last 7 days (mirrors `/v1/week`, 100-300 KB). |
-| `tweetfeed://iocs/month` | Last 30 days (mirrors `/v1/month`, 0.5-1 MB, API caps at 10,000 rows). |
+| `tweetfeed://iocs/today` | Every IOC row shared today (mirrors `/v1/today`, 50-250 KB by the end of the UTC day). |
+| `tweetfeed://iocs/week` | Last 7 days (mirrors `/v1/week`, 1-1.5 MB). |
+| `tweetfeed://iocs/month` | Last 30 days (mirrors `/v1/month`, 2-3 MB, API caps at 10,000 rows). |
 | `tweetfeed://iocs/{time}/{type}` | Template - time: today\|week\|month, type: url\|domain\|ip\|sha256\|md5 (mirrors `/v1/{time}/{type}`). |
 | `tweetfeed://campaigns/{id}` | Template - id = `tfc-` plus 12 hex chars (mirrors `/v1/campaigns/{id}`). |
 
