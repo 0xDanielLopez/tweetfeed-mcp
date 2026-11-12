@@ -332,7 +332,7 @@ const TOOLS = [
 					type: "string",
 					enum: ["daily", "movers", "tlds", "novelty", "producers", "all"],
 					description:
-						"Optional: which section to return. 'daily' = 31-day volume summary by type, 'movers' = top tags moving week-over-week (current 7d vs previous 7d), 'tlds' = most-abused TLDs among domain IOCs, 'novelty' = new vs recurring indicator ratio, 'producers' = feed producer concentration: top contributors, active producers and bus factor for 7d/30d windows, 'all' = every section. Default 'all'.",
+						"Optional: which section to return. 'daily' = 31-day volume summary by type, 'movers' = top tags moving week-over-week (current 7d vs previous 7d), with the distinct source tweets and reporting accounts behind each count, 'tlds' = most-abused TLDs among domain IOCs, 'novelty' = new vs recurring indicator ratio, 'producers' = feed producer concentration: top contributors, active producers and bus factor for 7d/30d windows, 'all' = every section. Default 'all'.",
 					default: "all",
 				},
 			},
@@ -1789,7 +1789,19 @@ interface TrendsDoc {
 		// api-worker emits [start, end] tuples, not pre-formatted strings.
 		current_range?: [string, string] | string;
 		previous_range?: [string, string] | string;
-		tags?: Array<{ tag: string; count: number; previous: number; delta: number; pct: number | null }>;
+		tags?: Array<{
+			tag: string;
+			count: number;
+			previous: number;
+			delta: number;
+			pct: number | null;
+			// Distinct source tweets / reporting accounts behind count and
+			// previous (trends.json since 2026-11-11; absent in older docs).
+			tweets?: number;
+			previous_tweets?: number;
+			reporters?: number;
+			previous_reporters?: number;
+		}>;
 	};
 	tlds?: {
 		window?: string;
@@ -1860,15 +1872,28 @@ function renderTrendsMovers(movers: TrendsDoc["movers"]): string {
 		return "## Top movers (week over week)\nNo mover data available.";
 	}
 	const header = `## Top movers: ${formatRange(movers.current_range)} vs ${formatRange(movers.previous_range)}`;
-	const colHeader = `  ${"tag".padEnd(20)}${"count".padStart(8)}${"prev".padStart(8)}${"delta".padStart(9)}${"pct".padStart(10)}`;
+	// tweets/accts columns only when the doc carries them (older trends.json
+	// docs do not): "cur/prev" distinct source tweets and reporting accounts.
+	const hasSources = movers.tags.some((m) => typeof m.tweets === "number" && typeof m.reporters === "number");
+	const pair = (cur: unknown, prev: unknown) =>
+		typeof cur === "number" ? `${cur}/${typeof prev === "number" ? prev : "?"}` : "-";
+	const colHeader =
+		`  ${"tag".padEnd(20)}${"count".padStart(8)}${"prev".padStart(8)}${"delta".padStart(9)}${"pct".padStart(10)}` +
+		(hasSources ? `${"tweets".padStart(10)}${"accts".padStart(9)}` : "");
 	const rows = movers.tags.map((m) => {
 		const delta = Number(m.delta) || 0;
 		const deltaStr = delta > 0 ? `+${delta}` : `${delta}`;
 		const pctStr =
 			m.pct === null || m.pct === undefined ? "new" : `${m.pct > 0 ? "+" : ""}${m.pct.toFixed(1)}%`;
-		return `  ${String(m.tag).padEnd(20)}${String(m.count).padStart(8)}${String(m.previous).padStart(8)}${deltaStr.padStart(9)}${pctStr.padStart(10)}`;
+		const sources = hasSources
+			? `${pair(m.tweets, m.previous_tweets).padStart(10)}${pair(m.reporters, m.previous_reporters).padStart(9)}`
+			: "";
+		return `  ${String(m.tag).padEnd(20)}${String(m.count).padStart(8)}${String(m.previous).padStart(8)}${deltaStr.padStart(9)}${pctStr.padStart(10)}${sources}`;
 	});
-	return [header, colHeader, ...rows].join("\n");
+	const note = hasSources
+		? "tweets/accts = distinct source tweets / reporting accounts, current/previous window. A big delta from 1 tweet is one report, not a trend."
+		: null;
+	return [header, colHeader, ...rows, ...(note ? [note] : [])].join("\n");
 }
 
 function renderTrendsTlds(tlds: TrendsDoc["tlds"]): string {

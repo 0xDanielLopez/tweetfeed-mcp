@@ -553,6 +553,8 @@ await test("get_trends section=movers returns only the movers block", async () =
 	const text = r.body.result.content[0]?.text ?? "";
 	assert(text.includes("Top movers"), `missing movers section: ${text.slice(0, 200)}`);
 	assert(!text.includes("Daily volume"), `unexpected daily section: ${text.slice(0, 200)}`);
+	// trends.json carries tweets/reporters per mover since 2026-11-11 (TF-6).
+	assert(/tweets\s+accts/.test(text), `missing tweets/accts columns: ${text.slice(0, 300)}`);
 });
 
 await test("get_trends section=tlds returns only the tlds block", async () => {
