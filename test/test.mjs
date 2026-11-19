@@ -287,6 +287,59 @@ await test("list_recent_iocs accepts type filter", async () => {
 	assert(r.body.result?.content, `no content: ${JSON.stringify(r.body)}`);
 });
 
+function cursorJson(r) {
+	const text = r.body.result?.content?.[0]?.text ?? "";
+	const i = text.indexOf("\n\n{");
+	assert(i > 0, `no JSON block in cursor answer: ${text.slice(0, 200)}`);
+	return { text, doc: JSON.parse(text.slice(i + 2)) };
+}
+
+await test("list_recent_iocs cursor mode: datetime since -> oldest first + window_end/has_more/resume_since", async () => {
+	const since = new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString().slice(0, 19) + "Z";
+	const r = await rpc("tools/call", { name: "list_recent_iocs", arguments: { since, limit: 5 } });
+	const { text, doc } = cursorJson(r);
+	assert(/^\d+ IOC\(s\) match since=/.test(text), `count must stay at the front: ${text.slice(0, 80)}`);
+	assert(doc.order === "oldest_first", `order: ${doc.order}`);
+	assert(doc.has_more === true, "3 days of feed must not fit in 5 rows");
+	assert(Array.isArray(doc.iocs) && doc.iocs.length >= 5, `iocs: ${doc.iocs?.length}`);
+	const dates = doc.iocs.map((x) => x.date);
+	assert(dates.every((d, i) => i === 0 || dates[i - 1] <= d), `not oldest first: ${dates}`);
+	assert(dates[0] >= since.replace("T", " ").replace("Z", ""), `row before since: ${dates[0]}`);
+	assert(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(doc.resume_since), `resume_since: ${doc.resume_since}`);
+	assert(doc.window_end && doc.window_end >= doc.resume_since, `window_end ${doc.window_end} < resume ${doc.resume_since}`);
+	assert(JSON.stringify(doc.dedupe_key) === JSON.stringify(["date", "user", "type", "value"]), "dedupe_key");
+});
+
+await test("list_recent_iocs cursor paging: page 2 starts after page 1 without splitting a second", async () => {
+	const since = new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString().slice(0, 19) + "Z";
+	const p1 = cursorJson(await rpc("tools/call", { name: "list_recent_iocs", arguments: { since, limit: 7 } })).doc;
+	assert(p1.has_more, "expected more than 7 rows in 2 days");
+	const last = p1.iocs[p1.iocs.length - 1].date;
+	assert(p1.resume_since === new Date(Date.parse(last.replace(" ", "T") + "Z") + 1000).toISOString().slice(0, 19) + "Z",
+		`resume_since ${p1.resume_since} != last ${last} + 1 s`);
+	const p2 = cursorJson(await rpc("tools/call", { name: "list_recent_iocs", arguments: { since: p1.resume_since, limit: 7 } })).doc;
+	assert(p2.iocs.length > 0, "page 2 empty");
+	assert(p2.iocs[0].date > last, `page 2 starts at ${p2.iocs[0].date}, page 1 ended at ${last}: same second split or overlap`);
+});
+
+await test("list_recent_iocs cursor end of window: has_more false, resume_since = window_end - 48 h", async () => {
+	const apiRes = await fetch("https://api.tweetfeed.live/v1/month");
+	const windowEnd = apiRes.headers.get("x-result-window-end");
+	assert(windowEnd, "ground truth missing x-result-window-end");
+	const since = new Date(Date.parse(windowEnd.replace(" ", "T") + "Z") - 3600 * 1000).toISOString().slice(0, 19) + "Z";
+	const { doc } = cursorJson(await rpc("tools/call", { name: "list_recent_iocs", arguments: { since, limit: 1000 } }));
+	assert(doc.has_more === false, "last hour must fit in 1000 rows");
+	const want = new Date(Date.parse(doc.window_end) - 48 * 3600 * 1000).toISOString().slice(0, 19) + "Z";
+	assert(doc.resume_since === want, `resume_since ${doc.resume_since} != window_end - 48 h ${want}`);
+});
+
+await test("list_recent_iocs rejects an impossible datetime", async () => {
+	for (const since of ["2026-02-30T00:00:00Z", "2026-11-19T25:00:00Z", "2026-11-19T10:00:00+0x"]) {
+		const r = await rpc("tools/call", { name: "list_recent_iocs", arguments: { since } });
+		assert(r.body.error?.code === -32602, `expected INVALID_PARAMS for ${since}: ${JSON.stringify(r.body).slice(0, 200)}`);
+	}
+});
+
 console.log("\n## Result-cap honesty (x-result-truncated)");
 
 await test("query_iocs time=month surfaces the real window when the API truncates", async () => {

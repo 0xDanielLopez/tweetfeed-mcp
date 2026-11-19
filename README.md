@@ -19,7 +19,7 @@ intel programmatically.
 | `check_url` | Check whether a specific URL appears in the feed. |
 | `check_ip` | Check whether an IPv4/IPv6 address appears in the feed. |
 | `check_hash` | Check whether an MD5 or SHA-256 hash appears in the feed (type auto-detected). |
-| `list_recent_iocs` | List IOCs added since a given date, with optional type/tag filters. |
+| `list_recent_iocs` | List IOCs added since a given date, with optional type/tag filters. A datetime `since` (`2026-11-19T08:00:00Z`) switches to cursor mode: oldest first, with `window_end`, `has_more` and `resume_since` for lossless delta sync. |
 | `get_tag_info` | Window aggregates plus recent IOCs for a tag (leading `#` optional). |
 | `get_trending` | Top tags and IOC-type distribution for a window (today/week/month/year). |
 | `enrich_ioc` | Exact lookup of an IOC (auto-detected type: url/domain/ip/md5/sha256) over the past 365 days, with AI/external-corroboration/net/domain-registration (reg, including the domain's age in days at first report and a `newly_registered` flag) context and campaign membership when available, plus an archive of history older than 365 days when it exists (can accompany a live match); falls back to a 30-day substring scan on a miss. |
