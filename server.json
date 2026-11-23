@@ -8,7 +8,16 @@
     "source": "github"
   },
   "websiteUrl": "https://tweetfeed.live",
-  "version": "0.1.0",
+  "icons": [
+    {
+      "src": "https://tweetfeed.live/apple-touch-icon.png",
+      "mimeType": "image/png",
+      "sizes": [
+        "180x180"
+      ]
+    }
+  ],
+  "version": "0.1.1",
   "remotes": [
     {
       "type": "streamable-http",
