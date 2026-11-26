@@ -98,7 +98,7 @@ const TOOLS = [
 				tag: {
 					type: "string",
 					description:
-						"Optional: filter by tag, case-insensitive substring match. Examples: 'phishing', 'cobaltstrike', 'ransomware', 'APT', 'Lockbit'. 94 tags exist - see https://tweetfeed.live/ for the live taxonomy.",
+						"Optional: filter by tag, case-insensitive substring match. Examples: 'phishing', 'cobaltstrike', 'ransomware', 'APT', 'Lockbit'. 95 tags exist - see https://tweetfeed.live/ for the live taxonomy.",
 				},
 				type: {
 					type: "string",
@@ -211,7 +211,7 @@ const TOOLS = [
 				tag: {
 					type: "string",
 					description:
-						"Tag to look up (e.g. 'phishing', 'CobaltStrike', 'lockbit'). Case-insensitive. The leading '#' is optional. 94 tags exist - see https://tweetfeed.live/tags/ for the full list.",
+						"Tag to look up (e.g. 'phishing', 'CobaltStrike', 'lockbit'). Case-insensitive. The leading '#' is optional. 95 tags exist - see https://tweetfeed.live/tags/ for the full list.",
 				},
 				limit: {
 					type: "number",
